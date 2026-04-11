@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: file:;">
+    <link rel="stylesheet" href="assets/css/all.min.css">
+    <link rel="stylesheet" href="assets/css/fonts.css">
+    <script src="assets/ocr/tesseract.min.js"></script>
+
+   <style>
+        :root { --accent: #8CFA96; }
+
+        /* Ensure the selection frame NEVER covers the floating bar */
+#frame { z-index: 100 !important; pointer-events: auto; }
+#frame.clean-slate {
+    /* Standard hide */
+    display: none !important;
+    opacity: 0 !important;
+    
+    /* Hardware acceleration hide (This kills the flash) */
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transform: translateZ(0) scale(0) !important; 
+    filter: opacity(0) !important;
+    
+    /* Absolute eviction */
+    left: -9999px !important;
+    top: -9999px !important;
+}
+
+/* Ensure the floating bar is ALWAYS on top of everything else */
+#floating-bar { z-index: 99999 !important; pointer-events: auto; display: flex !important; }
+
+/* When in fullscreen, make sure the viewport doesn't try to dim the screen */
+body.fullscreen .viewport { 
+    background: transparent !important; 
+    pointer-events: none; 
+}
+
+
+        /* --- VIRTUAL CURSOR (NEEDLE) --- */
+        .virtual-cursor {
+            position: fixed; pointer-events: none; z-index: 100000; display: none; width: 32px; height: 32px;
+            background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32' fill='none' stroke='white' stroke-width='1' stroke-linecap='round' stroke-linejoin='round' style='filter: drop-shadow(1px 1.5px 1.2px rgba(0,0,0,0.7));'><path d='M1 31 L13 19' /><rect x='13' y='7' width='6' height='16' rx='0.5' transform='rotate(45 16 16)' fill='rgba(255,255,255,0.15)' stroke='white' /><path d='M21 11 L27 5' /><path d='M25 3 L29 7' stroke-width='2' /></svg>");
+        }
+        .virtual-cursor::after {
+            content: ''; position: absolute; bottom: 0; left: 0; width: 4px; height: 4px; background-color: white; border-radius: 50%; mix-blend-mode: difference; 
+        }
+
+        .preset-grid-container { border-top: 1px solid #444; margin-top: 8px; padding-top: 8px; display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+
+        .ocr-scan-overlay {
+            position: absolute; border: 2px solid var(--accent); box-shadow: 0 0 15px var(--accent), inset 0 0 20px rgba(140, 250, 150, 0.1); pointer-events: none; z-index: 9999; overflow: hidden; background: rgba(0, 20, 0, 0.05); border-radius: 4px;
+        }
+        .ocr-scan-overlay::after {
+            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: #fff; box-shadow: 0 0 4px #fff, 0 0 10px var(--accent), 0 0 20px var(--accent); animation: scan-line 2s linear forwards;
+        }
+        @keyframes scan-line { 0% { top: -10%; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 110%; opacity: 0; } }
+
+
+        
+/* Landmark: Selection Box Enforcer */
+#frame {
+    display: block !important;
+    border: 2px dashed var(--accent) !important;
+    position: absolute !important;
+    z-index: 100 !important;
+    pointer-events: auto !important;
+    /* FIX: Prevents the "Hand" cursor and browser drag-ghosting */
+    user-select: none !important;
+    -webkit-user-drag: none !important; 
+}
+
+/* Ensure the 'clean-slate' state used in FS mode doesn't kill the border */
+#frame.clean-slate {
+    border: 2px dashed var(--accent) !important;
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+        /* --- GHOST STRIPE: EDGE-LIT CANVAS THEME --- */
+        .industrial-texture {
+            background: repeating-linear-gradient(45deg, #0B0C0E, #0B0C0E 10px, #0E1012 10px, #0E1012 20px) !important;
+            box-sizing: border-box !important;
+        }
+
+        /* --- FLOATING BAR --- */
+        #floating-bar { 
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); 
+            /* The Ghost Stripe */
+            background: repeating-linear-gradient(45deg, #0B0C0E, #0B0C0E 10px, #0E1012 10px, #0E1012 20px) !important;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.9), 0 0 20px rgba(140, 250, 150, 0.15); 
+            border: 1px solid var(--accent); border-radius: 8px; padding: 6px 12px; display: flex; gap: 0; align-items: center; z-index: 10000; backdrop-filter: blur(5px); transition: opacity 0.2s; max-width: 95vw; 
+            -webkit-app-region: drag !important; /* Forces dragging on the container */
+    cursor: grab;
+        }
+
+        * { box-sizing: border-box; user-select: none; }
+        body { margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; background-color: transparent; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        .hidden { display: none !important; }
+        body:not(.fullscreen) #floating-bar { display: none !important; }
+        body.fullscreen #floating-bar { display: flex !important; visibility: visible !important; opacity: 1 !important; }
+        #cursor-dot { position: fixed; top: 0; left: 0; border-radius: 50%; pointer-events: none; z-index: 8000; transform: translate(-50%, -50%); display: none; box-shadow: 0 0 2px rgba(255,255,255,0.8); }
+
+        /* [UPDATED] Header: Ghost Stripe + Edge-Lit */
+        .header { 
+            height: 44px; 
+            display: flex; 
+            align-items: center; 
+            padding: 0 5px 0 10px; 
+            gap: 10px; 
+            color: white; 
+            z-index: 10; 
+            -webkit-app-region: drag; 
+            flex-shrink: 0; 
+            position: relative;
+            
+            /* Transparent so the .industrial-texture class shows through */
+            background: transparent; 
+            
+            border-bottom: .7px solid rgba(140, 250, 150, 0.6);
+            box-shadow: 0 4px 20px rgba(140, 250, 150, 0.15);
+        }
+        
+        .header button, .header input, .utility-buttons, .window-controls { -webkit-app-region: no-drag; }
+
+        #header-drag-grip { 
+            position: relative; 
+            width: 20px; 
+            height: 24px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            -webkit-app-region: drag !important; 
+            cursor: grab; 
+            z-index: 20;
+            margin-left: 15px; 
+        }
+
+        /* --- WINDOW CONTROLS --- */
+        .window-controls .btn-icon {
+            width: 26px !important;
+            height: 26px !important;
+            font-size: 11px !important; 
+            background: transparent !important;
+            border: 1px solid rgba(255, 255, 255, 0.3) !important; 
+            color: #aaaaaa !important;            
+            border-radius: 4px;
+            margin-left: 4px; 
+            transition: all 0.2s ease;
+            padding: 0 !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #btn-fullscreen {
+    transition: all 0.2s ease; /* Ensures the glow and scale are smooth */
+}
+        #btn-help:hover { border-color: #8CFA96 !important; color: #8CFA96 !important; background: rgba(140, 250, 150, 0.1) !important; }
+        #btn-min:hover { border-color: #FFD80D !important; color: #FFD80D !important; background: rgba(255, 216, 13, 0.1) !important; }
+        #btn-close:hover { border-color: #E74C3C !important; color: #E74C3C !important; background: rgba(231, 76, 60, 0.15) !important; }
+        .window-controls { display: flex; align-items: center; gap: 6px; }
+
+        .logo-area { display: flex; align-items: center; gap: 10px; margin-right: 30px; -webkit-app-region: no-drag; min-width: 100px; }
+        .title { font-weight: bold; letter-spacing: 1px; font-size: 18px; color: #ffffff; }
+        .app-logo { height: 32px; width: 32px; object-fit: contain; }
+        .green-text { color: var(--accent); }
+
+        /* 1. Force the overall box to be strictly 24px tall */
+        .dims { display: flex; align-items: center; gap: 4px; background: transparent !important; padding: 0 6px; border-radius: 4px; border: 1px solid rgba(140, 250, 150, 0.5); height: 28px; box-sizing: border-box; }
+        .dims:hover, .dims:focus-within {
+            border-color: var(--accent) !important;
+            box-shadow: 0 0 8px rgba(140, 250, 150, 0.2);
+        }
+
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -webkit-appearance: textfield; -moz-appearance: textfield; appearance: textfield; }
+        .dim-input-wrapper { display: flex; align-items: center; background: transparent; }
+        
+        /* 2. Restored 14px font size, kept 48px width to prevent cutoffs, killed the glow */
+        .dims input { width: 40px; background: transparent; border: none; color: var(--accent); font-weight: bold; text-align: center; font-size: 14px; outline: none; margin: 0; padding: 0; height: 20px; font-family: 'Consolas', monospace; }
+        .dims input:focus { box-shadow: none !important; background: transparent !important; border: none !important; }
+        
+        /* 3. Restored original 20px high spin arrows */
+        .spin-btns { display: flex; flex-direction: column; width: 14px; height: 14px; border-left: none; }
+        .spin-btn { background: transparent; border: none; color: var(--accent); opacity: 0.3; height: 10px; width: 100%; font-size: 8px; line-height: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; margin: 0; -webkit-app-region: no-drag; transition: all 0.1s; }
+        .spin-btn:first-child { border-bottom: none; }
+        .spin-btn:hover { background: var(--accent); color: #1e1e1e; opacity: 1; }
+        .spin-btn:active { filter: brightness(0.8); background: #fff; }
+        
+        .dims span { color: var(--accent); font-weight: normal; font-size: 14px; margin: 0 0px; }
+        .dims-divider { width: 1px; height: 16px; background: #555; margin: 0 2px; }
+
+        /* 4. THE CRITICAL FIX: Crush the global 32px height specifically for the Apply button */
+        #btn-apply {
+            width: 20px !important;
+            height: 20px !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            font-size: 12px !important;
+            color: var(--accent);
+            border: none !important; /* <-- Removes the inherited resting border */
+        }
+
+         button { cursor: pointer; transition: 0.1s; border-radius: 4px; border: none; }
+       
+        .btn-icon { background: transparent; color: #aaa; font-size: 16px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; }
+        .btn-icon:hover { background: #394047; color: white; } 
+        .btn-icon.active-tool { color: var(--accent); background: #394047; box-shadow: 0 0 5px rgba(255,255,255,0.1); }
+        /* --- SLEEK TACTICAL SNAP BUTTON --- */
+        .btn-snap { 
+            background: var(--accent) !important; 
+            color: #0B0C0E !important; /* Deep tactical dark for maximum contrast */
+            font-family: 'Orbitron', sans-serif !important;
+            font-weight: 900 !important; 
+            font-size: 13px !important;
+            letter-spacing: 1px !important;
+            padding: 0 18px !important; 
+            height: 26px !important;
+            border: none !important;
+            border-radius: 4px !important;
+            
+            /* Sharp glass reflection inside top edge, subtle drop shadow outside */
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 
+                        inset 0 -1px 0 rgba(0,0,0,0.1), 
+                        0 2px 4px rgba(0,0,0,0.5) !important; 
+            
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+            text-transform: uppercase !important;
+            line-height: 1 !important;
+            
+            /* Bouncy, smooth physics for hover/click */
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+            cursor: pointer !important;
+        }
+
+        .btn-snap:hover { 
+            filter: brightness(1.15) saturate(1.2) !important; /* Powers up */
+            
+            /* The Reactor Glow */
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 
+                        0 0 15px rgba(140, 250, 150, 0.7), 
+                        0 0 30px rgba(140, 250, 150, 0.3) !important; 
+                        
+            /* Lifts up and expands slightly toward the user */
+            transform: translateY(-2px) scale(1.05) !important; 
+        }
+
+        .btn-snap:active { 
+            filter: brightness(0.9) !important; /* Dims on press */
+            
+            /* Physically punches into the screen */
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.6), 
+                        0 0 5px rgba(140, 250, 150, 0.4) !important; 
+            transform: translateY(1px) scale(0.95) !important; 
+        }
+        .btn-danger { color: #c04040; }
+        .btn-danger:hover { background: #500; color: white; }
+
+        .control-group-center { display: flex; gap: 20px; margin-left: 18px; }
+        .spacer-flexible { flex-grow: 1; -webkit-app-region: drag; }
+        .utility-buttons { display: flex; align-items: center; gap: 10px; margin-right: 10px; }
+        
+       
+        .viewport { flex-grow: 1; display: flex; justify-content: center; align-items: center; background: rgba(0,0,0,0.01); position: relative; }
+        .frame { width: 730px; height: 270px; border: 2px dashed var(--accent); position: relative; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05); background: transparent; cursor: none; z-index: 20; }
+        .frame::before, .frame::after, .corner-bracket::before, .corner-bracket::after { content: ''; position: absolute; width: 20px; height: 20px; border-color: var(--accent); border-style: solid; border-width: 0; z-index: 21; pointer-events: none; }
+        .frame::before { top: -2px; left: -2px; border-top-width: 3px; border-left-width: 3px; }
+        .frame::after { top: -2px; right: -2px; border-top-width: 3px; border-right-width: 3px; }
+        #cb-bl::before { bottom: -2px; left: -2px; border-bottom-width: 3px; border-left-width: 3px; }
+        #cb-br::after { bottom: -2px; right: -2px; border-bottom-width: 3px; border-right-width: 3px; }
+        #cb-bl { position: absolute; bottom: 0; left: 0; width: 0; height: 0; }
+        #cb-br { position: absolute; bottom: 0; right: 0; width: 0; height: 0; }
+
+        .resize-handle { position: absolute; width: 10px; height: 10px; background: transparent !important; z-index: 9000; }
+        .rh-n:hover, .rh-s:hover, .rh-e:hover, .rh-w:hover { background: var(--accent) !important; opacity: 0.5; }
+        .rh-nw:hover, .rh-ne:hover, .rh-sw:hover, .rh-se:hover { background: transparent !important; }
+        .rh-nw { top: -5px; left: -5px; cursor: nw-resize; } .rh-ne { top: -5px; right: -5px; cursor: ne-resize; } .rh-sw { bottom: -5px; left: -5px; cursor: sw-resize; } .rh-se { bottom: -5px; right: -5px; cursor: se-resize; }
+        .rh-n { top: -5px; left: 5px; right: 5px; width: auto; cursor: n-resize; } .rh-s { bottom: -5px; left: 5px; right: 5px; width: auto; cursor: s-resize; } .rh-w { left: -5px; top: 5px; bottom: 5px; height: auto; cursor: w-resize; } .rh-e { right: -5px; top: 5px; bottom: 5px; height: auto; cursor: e-resize; }
+
+        canvas { display: block; width: 100%; height: 100%; }
+        .grid { 
+    position: absolute; 
+    top: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 100%; 
+    pointer-events: none; 
+}
+
+        /* [UPDATED] Footer: Ghost Stripe + Edge-Lit */
+        .footer { 
+            height: 44px; 
+            display: flex; 
+            align-items: center; 
+            padding: 0 15px 0 10px; 
+            z-index: 10001; 
+            position: relative; 
+            flex-shrink: 0;
+            
+            /* Transparent so the .industrial-texture class shows through */
+            background: transparent; 
+            
+            border-top: .7px solid rgba(140, 250, 150, 0.6);
+            box-shadow: 0 -4px 20px rgba(140, 250, 150, 0.15);
+        }
+        
+        /* [UPDATED] Tool Button Layout */
+        .tool-group { display: flex; gap: 2px; align-items: center; }
+        .tool-btn { 
+            width: 30px; height: 30px; 
+            background: transparent; 
+            border-radius: 4px; 
+            display: flex; justify-content: center; align-items: center; 
+            position: relative;
+            
+            /* [CRITICAL FIX] Hides the "Ghost" icon that we move out of view */
+            overflow: hidden !important; 
+        }
+        
+        /* [NEW] Custom PNG Icon Styles */
+        .icon-img {
+            width: 20px;
+            height: 20px;
+            object-fit: contain;
+            pointer-events: none;
+            filter: invert(0.8); /* Inactive: Light Grey */  
+            transition: filter 0.1s; /* No transform transition */
+        }
+
+        /* [FIXED] ACTIVE STATE: Transparent BG + Icon Glows */
+        .tool-btn.active { 
+            background-color: transparent !important; 
+            border: 1px solid transparent !important; 
+            box-shadow: none !important; 
+            transform: translateY(-1px); 
+        }
+
+        /* [NEW] Remove the solid dot/circle after-effects for active tools */
+        .tool-btn.active::after {
+            display: none !important;
+        }
+
+        /* [NEW] Ensure standard hover still works but doesn't add a green box */
+        .tool-btn:hover { 
+            background: #394047 !important; 
+            color: white !important; 
+            border: 1px solid transparent !important;
+        }
+        .tool-btn.active { color: #1e1e1e; background: var(--accent); }
+        .tool-btn.solid-mode::after { content: ''; position: absolute; bottom: 2px; right: 2px; width: 6px; height: 6px; background-color: #1e1e1e; border: 1px solid #1e1e1e; border-radius: 50%; }
+        .tool-btn.active.solid-mode::after { background-color: #1e1e1e; border-color: #1e1e1e; }
+        .tool-btn.brush-mode::after { content: ''; position: absolute; bottom: 2px; right: 2px; width: 6px; height: 6px; background-color: #fff; border: 1px solid #000; border-radius: 50%; }
+        .tool-btn.active.brush-mode::after { background-color: #1e1e1e; border-color: #1e1e1e; }
+        .outlined-icon { color: transparent !important; -webkit-text-stroke: 1.5px #aaa; }
+        .tool-btn.active .outlined-icon { -webkit-text-stroke: 1.5px #1e1e1e; }
+
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-content { display: none; position: absolute; bottom: 40px; left: 0; background-color: #252525; border: 1px solid #444; border-radius: 4px; min-width: 40px; z-index: 10000; box-shadow: 0 4px 8px rgba(0,0,0,0.5); flex-direction: column; padding: 2px; }
+        .dropdown-content.header-drop { top: 35px; bottom: auto; right: 0; left: auto; }
+        .dropdown-content.show { display: flex; }
+        .dropdown-item { width: 36px; height: 36px; background: transparent; color: #aaa; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
+        .dropdown-item:hover { background-color: #444; color: white; }
+        .dropdown-item.selected { color: var(--accent); }
+
+        .divider { width: 2px; height: 24px; background: #444; margin: 0 15px; }
+        .settings { display: flex; align-items: center; gap: 6px; margin-left: auto; position: relative; margin-right: 15px; }
+        .color-trigger-btn { width: 25px; height: 25px; border: 1px solid #888; border-radius: 4px; cursor: pointer; background-color: #2e69a3; }
+        .color-popup { position: absolute; bottom: 40px; right: 80px; background: #252525; border: 1px solid #444; padding: 8px; border-radius: 6px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 5000; }
+        .swatch { width: 24px; height: 24px; border-radius: 3px; cursor: pointer; border: 1px solid transparent; }
+        .swatch:hover { transform: scale(1.1); border-color: white; }
+        .btn-rgb { width: 24px; height: 24px; border-radius: 3px; cursor: pointer; border: none; background: linear-gradient(135deg, red, yellow, lime, cyan, blue, magenta); color: black; font-weight: bold; font-size: 10px; display: flex; align-items: center; justify-content: center; }
+        #color-pk, #fb-color-pk { 
+    visibility: hidden !important; 
+    position: absolute !important; 
+    width: 0 !important; 
+    height: 0 !important; 
+    margin: 0 !important; 
+    padding: 0 !important; 
+    border: none !important; 
+    opacity: 0 !important; 
+    pointer-events: none !important; 
+}
+
+        .size-dot-wrapper { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin: 0 2px; }
+        .size-dot { background: #2e69a3; border-radius: 50%; }
+        
+        input[type="range"] { -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important; width: 40px !important; background: transparent !important; cursor: pointer; margin: 0; accent-color: auto; }
+        input[type="range"]::-webkit-slider-runnable-track { width: 100%; height: 6px !important; background: #1a1a1a !important; border-radius: 3px; border: 1px solid rgba(140, 250, 150, 0.5) !important; box-shadow: inset 0 1px 2px rgba(0,0,0,0.5) !important; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none !important; height: 16px !important; width: 6px !important; border-radius: 4px; background: #ffffff !important; margin-top: -6px !important; box-shadow: 0 0 5px var(--accent), 0 0 10px var(--accent) !important; border: 1px solid var(--accent) !important; transition: transform 0.1s, box-shadow 0.1s; }
+        input[type="range"]:hover::-webkit-slider-thumb { transform: scaleY(1.1); background: #fff !important; box-shadow: 0 0 8px var(--accent), 0 0 15px var(--accent) !important; }
+        input[type="range"]:focus { outline: none; }
+        
+        .opacity-icon { color: #aaa; font-size: 12px; margin-left: 8px; }
+        #font-family, #fb-font-family { background: #22262a; color: #ddd; border: 1px solid #444; height: 25px; border-radius: 4px; font-size: 11px; outline: none; cursor: pointer; width: 120px; }
+        .style-btn { background: #22262a; color: #888; border: 1px solid #444; width: 25px; height: 25px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+        .style-btn.active { background: var(--accent); color: #1e1e1e; border-color: var(--accent); }
+
+        /* Compact Font Selectors */
+select#font-family, select#fb-font-family {
+    width: 70px !important; /* Shrinks it down from 120px/92px */
+    text-overflow: ellipsis !important; /* Adds the "..." when closed */
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    padding-right: 15px !important; /* Keeps the text from crashing into the dropdown arrow */
+}
+
+        .text-wrapper { position: absolute; display: flex; align-items: center; z-index: 2000; }
+        .text-handle { width: 12px; height: 20px; background: #666; cursor: move; margin-right: 4px; border-radius: 2px; border: 1px solid #fff; }
+        .text-handle:hover { background: #888; }
+        .input-container { position: relative; }
+        .float-input { background: transparent; border: 1px dashed #fff; color: #0000FF; font-size: 20px; outline: none; padding: 2px; width: 100%; min-width: 45px; }
+        .text-sizer { visibility: hidden; white-space: nowrap; position: absolute; top: 0; left: 0; font-size: 20px; padding: 2px; }
+        
+        #window-resize-grip { position: absolute; bottom: 0; right: 0; width: 20px; height: 20px; background: transparent; color: #888; cursor: nwse-resize; display: flex; align-items: center; justify-content: center; font-size: 12px; z-index: 9999; }
+        #window-resize-grip:hover { color: var(--accent); background: rgba(255,255,255,0.05); }
+
+        #stamp-bubble { position: fixed; top: 15%; right: 20px; background: #1e1e1e; border: 2px solid var(--accent); border-radius: 20px; padding: 5px 10px; display: flex; align-items: center; gap: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); z-index: 9999; }
+        #stamp-current-value { font-size: 24px; font-weight: 900; color: var(--accent); min-width: 25px; text-align: center; }
+        .stamp-control-btn { width: 30px; height: 30px; border-radius: 50%; background-color: #333; color: #aaa; display: flex; align-items: center; justify-content: center; font-size: 14px; border: 1px solid #555; transition: all 0.1s; }
+        .stamp-control-btn:hover { background-color: #444; color: #fff; transform: scale(1.05); }
+        #stamp-mode-toggle { font-weight: bold; }
+
+        #floating-bar.hidden { display: none !important; }
+        #floating-bar .tool-group, #floating-bar .settings { flex-shrink: 0; }
+        
+        /* [UPDATED] specific gap for Floating Bar icons */
+        #floating-bar .tool-group {
+            gap: 2px !important; 
+        }
+
+        .fb-section { display: flex; align-items: center; gap: 2px; }
+        /* Footer Divider */
+        .divider { width: 2px; height: 30px; background: rgba(255, 255, 255, 0.6); margin: 0 !important; }
+
+        /* Floating Bar Divider */
+        .fb-divider { 
+            width: 1px !important; 
+            min-width: 1px !important; 
+            height: 30px !important; 
+            background: rgba(255, 255, 255, 0.6) !important; 
+            margin: 0 !important; 
+            display: inline-block; 
+            vertical-align: middle; 
+        }
+
+        /* --- SYSTEM TOAST (Data Backup Feedback) --- */
+#sysToast {
+    position: fixed;
+    bottom: -60px; /* Start hidden below screen */
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a1f24;
+    border: 1px solid #8CFA96; /* Mint Green */
+    color: #8CFA96;
+    padding: 12px 24px;
+    border-radius: 4px;
+    z-index: 200000; /* Above all other layers */
+    font-size: 0.75rem;
+    font-weight: bold;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: bottom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+#sysToast.show {
+    bottom: 50px; /* Slide up into view */
+}
+
+#sysToast.error {
+    border-color: #E74C3C;
+    color: #E74C3C;
+}
+
+        body.fullscreen .header { display: none !important; }
+        body.fullscreen .footer { display: none !important; }
+        body.fullscreen #window-resize-grip { display: none; }
+        
+        #hotkey-cheat-sheet { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(31, 36, 41, 0.95); border: 1px solid var(--accent); border-radius: 12px; padding: 25px; display: none; grid-template-columns: repeat(2, 1fr); gap: 15px 30px; z-index: 200000; box-shadow: 0 0 30px rgba(0,0,0,0.8); color: #eee; min-width: 400px; backdrop-filter: blur(5px); }
+        .hk-title { grid-column: 1 / -1; font-size: 18px; font-weight: bold; color: var(--accent); border-bottom: 1px solid #555; padding-bottom: 10px; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; text-align: center; }
+        .hk-row { display: flex; align-items: center; justify-content: space-between; font-size: 14px; padding: 5px 0; border-bottom: 1px solid #333; }
+        .hk-key { background: #333; padding: 2px 8px; border-radius: 4px; font-family: monospace; font-weight: bold; color: var(--accent); border: 1px solid #555; box-shadow: 0 2px 0 rgba(0,0,0,0.5); font-size: 12px; }
+        .hk-desc { color: #ccc; }
+        .drag-grip { width: 20px; height: 24px; display: flex; align-items: center; justify-content: center; -webkit-app-region: drag !important; cursor: grab; margin-left: 4px; }
+        .drag-grip i, .drag-grip svg { display: none !important; }
+        .drag-grip::after { content: ''; width: 7px; height: 7px; background-color: #8CFA96; box-shadow: 0 0 12px rgba(140, 250, 150, 1.0), 0 0 25px rgba(140, 250, 150, 0.5); border-radius: 1px; }
+    
+    .dropzone {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; 
+    height: 100vh;
+    background: rgba(10, 10, 10, 0.85);
+    backdrop-filter: blur(8px);
+    z-index: 200000;
+    border: 2px dashed var(--accent);
+    pointer-events: none;
+
+    /* THE FIX: Use display: none as the baseline */
+    display: none !important; 
+}
+
+/* ONLY this specific combo can show it */
+.dropzone.drag-active {
+    display: flex !important; 
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* --- SMART DIRECTIONAL UI --- */
+
+/* 1. Flip Dropdowns to open DOWNWARD when bar is at top */
+#floating-bar.at-top .dropdown-content {
+    bottom: auto !important;
+    top: 40px !important; 
+    transform: translateY(-12px) scale(0.95) !important; /* Slide from bar instead of bottom */
+}
+
+#floating-bar.at-top .dropdown-content.show {
+    transform: translateY(0) scale(1) !important;
+}
+
+/* 2. Adjust Tooltips if needed (Optional) */
+#floating-bar.at-top ~ .custom-tooltip {
+    transform: translateY(5px);
+}
+
+    </style>
+</head>
+<body>
+    <div id="dropzone-overlay" class="dropzone">
+    <div class="drop-content">
+        <svg class="glowing-lock" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="90" height="90" style="margin-bottom: 25px;">
+            <defs>
+                <linearGradient id="mintGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="var(--accent, #8CFA96)" stop-opacity="1" />
+                    <stop offset="100%" stop-color="#00E5FF" stop-opacity="0.3" />
+                </linearGradient>
+            </defs>
+            
+            <circle cx="50" cy="50" r="44" fill="none" stroke="var(--accent, #8CFA96)" stroke-width="1.5" stroke-dasharray="4 8" opacity="0.5"/>
+            <circle cx="50" cy="50" r="38" fill="none" stroke="var(--accent, #8CFA96)" stroke-width="1" stroke-dasharray="20 10 5 10" opacity="0.8"/>
+            
+            <polygon points="50,22 75,36 75,64 50,78 25,64 25,36" fill="rgba(140, 250, 150, 0.05)" stroke="url(#mintGrad)" stroke-width="3"/>
+            
+            <circle cx="50" cy="50" r="7" fill="var(--accent, #8CFA96)" />
+            <path d="M 50 22 L 50 42 M 75 36 L 56 46 M 75 64 L 56 54 M 50 78 L 50 58 M 25 64 L 44 54 M 25 36 L 44 46" stroke="var(--accent, #8CFA96)" stroke-width="1.5" opacity="0.6"/>
+            
+            <path d="M 35 15 L 20 25 L 20 40 M 65 15 L 80 25 L 80 40 M 35 85 L 20 75 L 20 60 M 65 85 L 80 75 L 80 60" fill="none" stroke="var(--accent, #8CFA96)" stroke-width="2" opacity="0.4"/>
+        </svg>
+        <p style="margin: 0; font-size: 18px; letter-spacing: 3px; font-weight: 900;">DECRYPT .MINT TO SEAL</p>
+    </div>
+</div>
+   <img id="backdrop-img" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:1; pointer-events:none; object-fit: fill;">
+    <div id="virtual-cursor" class="virtual-cursor"></div>
+    <div id="cursor-dot"></div>
+
+    <div class="header industrial-texture" style="display: flex; align-items: center; justify-content: space-between; padding: 0 10px; width: 100%; box-sizing: border-box;">
+        
+        <div class="header-zone-left" style="display: flex; align-items: center; gap: 12px; flex-shrink: 0; -webkit-app-region: no-drag;">
+            
+            <div class="logo-area" style="display: flex; align-items: center; gap: 10px; -webkit-app-region: drag;">
+                <img src="icon.png" class="app-logo" width="36" height="36" alt="icon">
+                <span class="title">Cap<span class="green-text">Size</span></span>
+            </div>
+
+            <div class="fb-divider" style="height: 32px !important; margin-left: -12px !important; margin-right: 2px !important; opacity: 0.9;"></div>
+
+            <div class="dims" style="display: flex; align-items: center; gap: 5px;">
+                <div class="dim-input-wrapper">
+                    <input type="number" id="inp-w" value="900">
+                    <div class="spin-btns">
+                        <button class="spin-btn" onpointerdown="startSpin('inp-w', 1)" onpointerup="stopSpin()" onpointerleave="stopSpin()"><i class="fa-solid fa-caret-up"></i></button>
+                        <button class="spin-btn" onpointerdown="startSpin('inp-w', -1)" onpointerup="stopSpin()" onpointerleave="stopSpin()"><i class="fa-solid fa-caret-down"></i></button>
+                    </div>
+                </div>
+                <span>X</span>
+                <div class="dim-input-wrapper">
+                    <input type="number" id="inp-h" value="270">
+                    <div class="spin-btns">
+                        <button class="spin-btn" onpointerdown="startSpin('inp-h', 1)" onpointerup="stopSpin()" onpointerleave="stopSpin()"><i class="fa-solid fa-caret-up"></i></button>
+                        <button class="spin-btn" onpointerdown="startSpin('inp-h', -1)" onpointerup="stopSpin()" onpointerleave="stopSpin()"><i class="fa-solid fa-caret-down"></i></button>
+                    </div>
+                </div>
+                <div class="dims-divider"></div>
+                <button id="btn-apply" class="btn-icon" title="Apply Size"><i class="fa-solid fa-check"></i></button>
+            </div>
+            
+        </div>
+
+       <div class="header-drag-zone" style="flex-grow: 1; height: 100%; display: flex; align-items: center; justify-content: center; gap: 16px; padding: 0 6px; -webkit-app-region: drag; cursor: grab;">
+            
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <button id="btn-center" class="btn-icon" title="Reset & Center" style="-webkit-app-region: no-drag; cursor: pointer;">
+                    <div class="colored-icon" style="mask-image: url('assets/icons/center-reset.png'); -webkit-mask-image: url('assets/icons/center-reset.png');"></div>
+                </button>
+                <div class="fb-divider" style="height: 24px !important; margin-left: 10px !important; opacity: 0.9;"></div>
+            </div>
+            
+            <div id="header-drag-grip" class="drag-grip" title="Drag Window" style="margin: 0; pointer-events: none;">
+                <i class="fa-solid fa-bars" style="display: none;"></i>
+            </div>
+            
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div class="fb-divider" style="height: 24px !important; margin-right: 10px !important; opacity: 0.9;"></div>
+                <button id="btn-del" class="btn-icon btn-danger" title="Clear All" style="-webkit-app-region: no-drag; cursor: pointer;">
+                    <div class="colored-icon" style="mask-image: url('assets/icons/trash.png'); -webkit-mask-image: url('assets/icons/trash.png');"></div>
+                </button> 
+            </div>
+            
+        </div>
+
+        <div class="header-zone-right" style="display: flex; align-items: center; gap: 18px; flex-shrink: 0; -webkit-app-region: no-drag;">
+            
+            <div style="display: flex; align-items: center;">
+                <button id="btn-snap" class="btn-snap" title="Snap (Enter)">SNAP</button>
+            </div>
+
+            <div class="fb-divider" style="height: 32px !important; margin: 0 -2px !important;"></div>
+
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <button id="btn-save" class="btn-icon" title="Save">
+                    <div class="colored-icon" style="mask-image: url('assets/icons/save.png'); -webkit-mask-image: url('assets/icons/save.png');"></div>
+                </button>
+                <button id="btn-save-close" class="btn-icon" title="Save and Close to Tray">
+                    <div class="colored-icon" style="mask-image: url('assets/icons/output-outline.png'); -webkit-mask-image: url('assets/icons/output-outline.png');"></div>
+                </button>
+                <button id="btn-drag" class="btn-icon" title="Drag to Share" draggable="true">
+                    <div class="colored-icon" style="mask-image: url('assets/icons/drag-and-share.png'); -webkit-mask-image: url('assets/icons/drag-and-share.png');"></div>
+                </button>
+                <button id="btn-fullscreen" class="btn-icon" title="Fullscreen Toggle">
+                     <div class="colored-icon" style="mask-image: url('assets/icons/fullscreen-mode.png'); -webkit-mask-image: url('assets/icons/fullscreen-mode.png');"></div>
+                </button>
+            </div>
+
+            <div class="fb-divider" style="height: 32px !important; margin: 0 -2px !important;"></div>
+
+            <div class="window-controls" style="display: flex; align-items: center; gap: 6px;">
+                <button id="btn-help" class="btn-icon" title="Settings">
+                    <div class="colored-icon" style="mask-image: url('assets/icons/settings-modal.png'); -webkit-mask-image: url('assets/icons/settings-modal.png');"></div>
+                </button>
+                <button id="btn-min" class="btn-icon">
+                    <div class="colored-icon" style="mask-image: url('assets/icons/minimize.png'); -webkit-mask-image: url('assets/icons/minimize.png');"></div>
+                </button>
+                <button id="btn-close" class="btn-icon">
+                    <div class="colored-icon" style="mask-image: url('assets/icons/close.png'); -webkit-mask-image: url('assets/icons/close.png');"></div>
+                </button>
+            </div>
+            
+        </div>
+    </div>
+
+    <div class="viewport">
+        <div id="frame" class="frame">
+            <canvas id="canvas"></canvas>
+            <div id="text-layer"></div>
+            <div id="grid" class="grid hidden"></div>
+            
+            <div id="cb-bl" class="corner-bracket"></div>
+            <div id="cb-br" class="corner-bracket"></div>
+            
+            <div class="resize-handle rh-nw" data-dir="nw"></div>
+            <div class="resize-handle rh-n"  data-dir="n"></div>
+            <div class="resize-handle rh-ne" data-dir="ne"></div>
+            <div class="resize-handle rh-w"  data-dir="w"></div>
+            <div class="resize-handle rh-e"  data-dir="e"></div>
+            <div class="resize-handle rh-sw" data-dir="sw"></div>
+            <div class="resize-handle rh-s"  data-dir="s"></div>
+            <div class="resize-handle rh-se" data-dir="se"></div>
+        </div>
+    </div>
+    
+    <div id="stamp-bubble" class="hidden">
+        <button id="stamp-mode-toggle" class="stamp-control-btn" title="Toggle Mode (Number/Letter)"><i class="fa-solid fa-list-ol"></i></button>
+        <span id="stamp-current-value">1</span>
+        <button id="stamp-reset" class="stamp-control-btn" title="Reset Counter (Ctrl+R)"><i class="fa-solid fa-rotate-left"></i></button>
+    </div>
+
+    <div class="footer industrial-texture">
+        <div class="tool-group">
+            <button class="tool-btn active" data-t="cursor" title="Select">
+                <img src="assets/icons/arrow-pointer.png" class="icon-img" alt="Cursor">
+            </button>
+            
+            <div class="fb-divider"></div>
+            
+            <button class="tool-btn" data-t="pen" title="Pen Tool">
+                <img src="assets/icons/pen-icon.png" class="icon-img" alt="Pen">
+            </button>
+            <button class="tool-btn" data-t="line" title="Line Tool (Right-Click for Highlighter)">
+                <img src="assets/icons/line.png" class="icon-img" alt="Line">
+            </button>
+            <button class="tool-btn" data-t="square" title="Square (Double Click for Solid)">
+                <img src="assets/icons/square.png" class="icon-img" alt="Square">
+            </button>
+            <button class="tool-btn" data-t="circle" title="Circle (Double Click for Solid)">
+                <img src="assets/icons/circle.png" class="icon-img" alt="Circle">
+            </button>
+
+            <div class="dropdown" id="shape-dropdown">
+                <button class="tool-btn" id="btn-multishape" data-t="star" title="Shapes (Right-Click for Menu, Dbl Click for Solid)">
+                    <img src="assets/icons/polygon-default-button.png" class="icon-img" alt="Shapes">
+                </button>
+                <div class="dropdown-content" id="shape-menu">
+                    <button class="dropdown-item" data-sub="star" title="Star">
+                        <img src="assets/icons/star.png" class="icon-img" alt="Star">
+                    </button>
+                    <button class="dropdown-item" data-sub="check" title="Checkmark">
+                        <img src="assets/icons/check.png" class="icon-img" alt="Check">
+                    </button>
+                    <button class="dropdown-item" data-sub="x-shape" title="X Shape">
+                        <img src="assets/icons/x-shape.png" class="icon-img" alt="X Shape">
+                    </button>
+                    <button class="dropdown-item" data-sub="triangle" title="Triangle">
+                        <img src="assets/icons/triangle.png" class="icon-img" alt="Triangle">
+                    </button>
+                    <button class="dropdown-item" data-sub="polygon" title="Polygon (Shift for angles)">
+                        <img src="assets/icons/polygon-default-button.png" class="icon-img" alt="Polygon">
+                    </button>
+                </div>
+            </div>
+
+            <div class="dropdown" id="arrow-dropdown">
+                <button class="tool-btn" id="btn-arrow-multi" data-t="arrow" title="Arrow Tool (Right-Click for Styles)">
+                    <img src="assets/open-v-arrow.png" class="icon-img" alt="Arrow Tool">
+                </button>
+                <div class="dropdown-content" id="arrow-menu">
+                    <button class="dropdown-item" data-arrow="v" title="Open V">
+                        <img src="assets/open-v-arrow.png" class="icon-img" alt="Open V Arrow">
+                    </button>
+                    <button class="dropdown-item" data-arrow="hand" title="Hand Drawn">
+                        <img src="assets/hand-drawn-arrow.png" class="icon-img" alt="Hand Arrow">
+                    </button>
+                    <button class="dropdown-item" data-arrow="triangle" title="Standard">
+                        <img src="assets/standard-arrow.png" class="icon-img" alt="Standard Arrow">
+                    </button>
+                   <button class="dropdown-item" data-arrow="concave" title="Curved Back">
+                        <img src="assets/curved-arrow.png" class="icon-img" alt="Curved Arrow">
+                    </button>
+                    <button class="dropdown-item" data-arrow="dot" title="Dot Endpoint"> 
+                        <img src="assets/dot-arrow.png" class="icon-img" alt="Dot Arrow">
+                    </button>
+                </div>
+            </div>
+            
+            <div class="fb-divider"></div>
+            
+            <div class="dropdown" id="footer-extra-tools">
+                <button class="tool-btn" id="btn-footer-extras" title="Extra Tools">
+                    <img src="assets/icons/toolbox.png" class="icon-img" alt="Toolbox">
+                </button>
+                <div class="dropdown-content" id="footer-extras-menu" style="left: -10px;">
+                    <button class="dropdown-item" id="btn-ocr" data-tool="ocr" data-t="ocr" title="OCR">
+                        <img src="assets/icons/ocr.png" class="icon-img" alt="OCR">
+                    </button>
+                    <button class="dropdown-item" id="btn-eyedropper" data-tool="eyedropper" data-t="eyedropper" title="Eyedropper">
+                        <img src="assets/icons/eyedropper.png" class="icon-img" alt="Eyedropper">
+                    </button>
+                    <button class="dropdown-item" id="btn-stamp" data-tool="stamp" data-t="stamp" title="Stamp">
+                        <img src="assets/icons/stamp.png" class="icon-img" alt="Stamp">
+                    </button>
+                    <button class="dropdown-item" id="btn-magnifier" data-tool="magnifier" data-t="magnifier" title="Magnifier">
+                        <img src="assets/icons/magnifier.png" class="icon-img" alt="Magnifier">
+                    </button>
+                    <button class="dropdown-item" id="btn-blur" data-tool="blur" data-t="blur" title="Blur">
+                        <img src="assets/icons/blur.png" class="icon-img" alt="Blur">
+                    </button>
+                </div>
+            </div>
+
+            <button class="tool-btn" id="grid-toggle" title="Toggle Grid">
+                <img src="assets/icons/grid.png" class="icon-img" alt="Grid">
+            </button>
+
+             <div class="fb-divider"></div>
+
+            <button class="tool-btn" data-t="eraser" title="Eraser (Object Mode default)">
+                <img src="assets/icons/solid-eraser.png" class="icon-img" alt="Eraser">
+            </button>
+            <button class="tool-btn" id="undo" title="Undo">
+                <img src="assets/icons/undo.png" class="icon-img" alt="Undo">
+            </button>
+            <button class="tool-btn" id="redo" title="Redo">
+                <img src="assets/icons/redo.png" class="icon-img" alt="Redo">
+            </button>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="settings">
+            <div class="fb-divider"></div>
+
+            <button class="tool-btn" data-t="text" title="Text Tool">
+                <img src="assets/icons/font.png" class="icon-img" alt="Text Tool" style="transform: scale(1.3) !important;">
+            </button> 
+            
+            <div class="dropdown" id="font-dropdown-container">
+    <button class="tool-btn custom-font-btn" id="font-family" value="Arial" title="Select Font">
+        <span class="font-label" style="font-family: Arial, sans-serif;">Arial</span>
+        <i class="fa-solid fa-chevron-down"></i>
+    </button>
+    <div class="dropdown-content font-menu" id="font-family-menu"></div>
+</div>
+
+            <button id="btn-bold" class="style-btn" title="Bold"><i class="fa-solid fa-bold" style="transform: scale(1.3) !important;"></i></button>
+            <button id="btn-italic" class="style-btn" title="Italic"><i class="fa-solid fa-italic" style="transform: scale(1.3) !important;"></i></button>
+
+            <div class="fb-divider"></div>
+
+            <div id="color-trigger" class="color-trigger-btn" title="Change Color"></div>
+
+            <div id="color-popup" class="color-popup hidden">
+                <div class="swatch" style="background-color: #2e69a3;" data-c="#2e69a3"></div> 
+                <div class="swatch" style="background-color: #009900;" data-c="#009900"></div>
+                <div class="swatch" style="background-color: #e6e600;" data-c="#e6e600"></div> 
+                <div class="swatch" style="background-color: #ff8800;" data-c="#ff8800"></div>
+                <div class="swatch" style="background-color: #b80000;" data-c="#b80000"></div>
+                <div class="swatch" style="background-color: #000000;" data-c="#000000"></div>
+                <div class="swatch" style="background-color: #ffffff;" data-c="#ffffff"></div>
+                <button class="btn-rgb" id="btn-rgb">+</button>
+                <input type="color" id="color-pk" value="#2e69a3">
+            </div>
+
+            <div class="size-dot-wrapper">
+                <div id="size-dot" class="size-dot" style="background-color: #2e69a3;"></div>
+            </div>
+
+            <input type="range" id="size-sl" min="2" max="20" value="5" title="Size">
+            
+            <div class="colored-icon" title="Opacity" style="width: 20px !important; height: 20px !important; background-color: var(--accent); mask-image: url('assets/icons/opacity.png'); -webkit-mask-image: url('assets/icons/opacity.png');"></div>
+            
+            <input type="range" id="opacity-sl" min="0.1" max="1" step="0.1" value="1" title="Opacity">
+        </div>
+    </div>
+    
+    <div id="floating-bar" class="hidden">
+    <div class="fb-brand-container" style="display: flex; align-items: center; gap: 8px; margin-left: 5px; -webkit-app-region: drag;">
+        <img src="icon.png" width="24" height="24" style="pointer-events: none;">
+        <span class="brand-font" style="font-size: 16px; color: #fff; white-space: nowrap; display: flex; align-items: center;">
+            Cap<span class="green-text">Size</span>
+        </span>
+    </div>
+        
+        <div class="fb-divider"></div>
+
+       <div class="tool-group">
+            <button id="fb-pos-reset" class="btn-icon" title="Dock Toolbar">
+                <div class="colored-icon" style="mask-image: url('assets/icons/anchor.png'); -webkit-mask-image: url('assets/icons/anchor.png');"></div>
+            </button>
+            <button id="fb-monitor-jump" class="btn-icon pro-only" title="Jump to Next Monitor">
+                <i class="fa-solid fa-display" style="font-size: 14px;"></i>
+            </button>
+            <div class="fb-divider"></div>
+
+            <button class="tool-btn" id="fb-max" title="Maximize Frame">
+                <img src="assets/icons/maximize-frame.png" class="icon-img" alt="Maximize">
+            </button>
+            
+            <button class="tool-btn" id="fb-reset" title="New Selection">
+                <img src="assets/icons/new-selection.png" class="icon-img" alt="New Selection">
+            </button>
+            
+            <div class="fb-divider"></div>
+
+            <button class="tool-btn active" data-t="cursor" title="Select">
+                <img src="assets/icons/arrow-pointer.png" class="icon-img" alt="Cursor">
+            </button>
+
+            <button class="tool-btn" data-t="pen" title="Pen Tool">
+                <img src="assets/icons/pen-icon.png" class="icon-img" alt="Pen">
+            </button>
+            <button class="tool-btn" data-t="line" title="Line Tool (Right-Click for Highlighter)">
+                <img src="assets/icons/line.png" class="icon-img" alt="Line">
+            </button>
+            <button class="tool-btn" data-t="square" title="Square (Double Click for Solid)">
+                <img src="assets/icons/square.png" class="icon-img" alt="Square">
+            </button>
+            <button class="tool-btn" data-t="circle" title="Circle (Double Click for Solid)">
+                <img src="assets/icons/circle.png" class="icon-img" alt="Circle">
+            </button>
+            
+            <div class="dropdown" id="fb-shape-dropdown">
+                <button class="tool-btn" id="fb-btn-multishape" data-t="star" title="Shapes">
+                    <img src="assets/icons/polygon-default-button.png" class="icon-img" alt="Shapes">
+                </button>
+                <div class="dropdown-content" id="fb-shape-menu">
+                    <button class="dropdown-item" data-sub="star" title="Star">
+                        <img src="assets/icons/star.png" class="icon-img" alt="Star">
+                    </button>
+                    <button class="dropdown-item" data-sub="check" title="Checkmark">
+                        <img src="assets/icons/check.png" class="icon-img" alt="Check">
+                    </button>
+                    <button class="dropdown-item" data-sub="x-shape" title="X Shape">
+                        <img src="assets/icons/x-shape.png" class="icon-img" alt="X Shape">
+                    </button>
+                    <button class="dropdown-item" data-sub="triangle" title="Triangle">
+                        <img src="assets/icons/triangle.png" class="icon-img" alt="Triangle">
+                    </button>
+                    <button class="dropdown-item" data-sub="polygon" title="Polygon (Shift for angles)">
+                        <img src="assets/icons/polygon-default-button.png" class="icon-img" alt="Polygon">
+                    </button>
+                </div>
+            </div>
+
+            <div class="dropdown" id="fb-arrow-dropdown">
+                <button class="tool-btn" id="fb-btn-arrow-multi" data-t="arrow" title="Arrow Tool">
+                    <img src="assets/open-v-arrow.png" class="icon-img" alt="Arrow Tool">
+                </button>
+                <div class="dropdown-content" id="fb-arrow-menu">
+                    <button class="dropdown-item" data-arrow="v" title="Open V">
+                        <img src="assets/open-v-arrow.png" class="icon-img" alt="Open V Arrow">
+                    </button>
+                   <button class="dropdown-item" data-arrow="hand" title="Hand Drawn">
+                        <img src="assets/hand-drawn-arrow.png" class="icon-img" alt="Hand Arrow">
+                    </button>
+                    <button class="dropdown-item" data-arrow="triangle" title="Standard">
+                        <img src="assets/standard-arrow.png" class="icon-img" alt="Standard Arrow">
+                    </button>
+                    <button class="dropdown-item" data-arrow="concave" title="Curved Back">
+                        <img src="assets/curved-arrow.png" class="icon-img" alt="Curved Arrow">
+                    </button>
+                    <button class="dropdown-item" data-arrow="dot" title="Dot Endpoint">
+                        <img src="assets/dot-arrow.png" class="icon-img" alt="Dot Arrow">
+                    </button>
+                </div>
+            </div>
+
+            <div class="fb-divider"></div>
+
+             <div class="dropdown" id="fb-tools-dropdown">
+                <button class="tool-btn" id="fb-btn-tools" title="Extra Tools">
+                    <img src="assets/icons/toolbox.png" class="icon-img" alt="Toolbox">
+                </button>
+                <div class="dropdown-content" id="fb-tools-menu" style="left: -10px;">
+                    <button class="dropdown-item" data-tool="ocr" data-t="ocr" title="OCR">
+                        <img src="assets/icons/ocr.png" class="icon-img" alt="OCR">
+                    </button>
+                    <button class="dropdown-item" data-tool="eyedropper" data-t="eyedropper" title="Eyedropper">
+                        <img src="assets/icons/eyedropper.png" class="icon-img" alt="Eyedropper">
+                    </button>
+                    <button class="dropdown-item" data-tool="stamp" data-t="stamp" title="Stamp">
+                        <img src="assets/icons/stamp.png" class="icon-img" alt="Stamp">
+                    </button>
+                    <button class="dropdown-item" data-tool="magnifier" data-t="magnifier" title="Magnifier">
+                        <img src="assets/icons/magnifier.png" class="icon-img" alt="Magnifier">
+                    </button>
+                    <button class="dropdown-item" data-tool="blur" data-t="blur" title="Blur">
+                        <img src="assets/icons/blur.png" class="icon-img" alt="Blur">
+                    </button>
+                </div>
+            </div>
+
+            <button class="tool-btn" id="fb-grid-toggle" title="Toggle Grid">
+                <img src="assets/icons/grid.png" class="icon-img" alt="Grid">
+            </button>
+
+            <div class="fb-divider"></div>
+            
+            <button class="tool-btn" data-t="eraser" title="Eraser">
+                <img src="assets/icons/eraser.png" class="icon-img" alt="Eraser">
+            </button>
+            <button class="tool-btn" id="fb-undo" title="Undo">
+                <img src="assets/icons/undo.png" class="icon-img" alt="Undo">
+            </button>
+            <button class="tool-btn" id="fb-redo" title="Redo">
+                <img src="assets/icons/redo.png" class="icon-img" alt="Redo">
+            </button>
+        </div>
+
+        <div class="fb-divider"></div>
+
+        <div class="settings">
+            <button class="tool-btn" data-t="text" title="Text Tool">
+                <img src="assets/icons/font.png" class="icon-img" alt="Text Tool" style="transform: scale(1.1) !important;">
+            </button>
+                
+            <div class="dropdown" id="fb-font-dropdown-container">
+    <button class="tool-btn custom-font-btn" id="fb-font-family" value="Arial" title="Select Font">
+        <span class="font-label" style="font-family: Arial, sans-serif;">Arial</span>
+        <i class="fa-solid fa-chevron-down"></i>
+    </button>
+    <div class="dropdown-content font-menu" id="fb-font-family-menu"></div>
+</div>
+
+            <button id="fb-btn-bold" class="style-btn" title="Bold"><i class="fa-solid fa-bold"></i></button>
+            <button id="fb-btn-italic" class="style-btn" title="Italic"><i class="fa-solid fa-italic"></i></button>
+
+            <div class="fb-divider"></div>
+
+            <div id="fb-color-trigger" class="color-trigger-btn" title="Change Color"></div>
+            
+            <div id="fb-color-popup" class="color-popup hidden">
+                 <input type="color" id="fb-color-pk" value="#2e69a3">
+            </div>
+
+            <div class="size-dot-wrapper">
+                <div id="fb-size-dot" class="size-dot" style="background-color: #2e69a3;"></div>
+            </div>
+
+            <input type="range" id="fb-size-sl" min="2" max="20" value="5" title="Size">
+            
+            <div class="colored-icon" title="Opacity" style="width: 18px !important; height: 18px !important; background-color: var(--accent); mask-image: url('assets/icons/opacity.png'); -webkit-mask-image: url('assets/icons/opacity.png');"></div>
+            
+            <input type="range" id="fb-opacity-sl" min="0.1" max="1" step="0.1" value="1" title="Opacity">
+        </div>
+
+        <div class="fb-divider"></div>
+
+        <div class="fb-section">
+            <button id="fb-save" class="btn-icon" title="Save" style="color: #00c000; font-size: 16px !important;">
+                <div class="colored-icon" style="transform: scale(1.3); mask-image: url('assets/icons/save.png'); -webkit-mask-image: url('assets/icons/save.png');"></div>
+            </button>
+
+            <button id="fb-save-close" class="btn-icon" title="Save and Close to Tray" style="color: #FFD700; font-size: 16px !important;">
+                <div class="colored-icon" style="transform: scale(1.5); mask-image: url('assets/icons/output-outline.png'); -webkit-mask-image: url('assets/icons/output-outline.png');"></div>
+            </button>
+            
+            <button id="fb-drag" class="btn-icon" title="Drag to Share (Click & Hold)" draggable="true" style="color: #00bcd4;">
+                <div class="colored-icon" style="transform: scale(1.6); mask-image: url('assets/icons/drag-and-share.png'); -webkit-mask-image: url('assets/icons/drag-and-share.png');"></div>
+            </button>
+
+            <button id="fb-del" class="btn-danger btn-icon" title="Clear All">
+                <div class="colored-icon" style="transform: scale(1.5); mask-image: url('assets/icons/trash.png'); -webkit-mask-image: url('assets/icons/trash.png');"></div>
+            </button>    
+             
+            <button id="fb-exit" class="btn-icon" title="Exit to Window Mode">
+                <div class="colored-icon" style="transform: scale(1.3); mask-image: url('assets/icons/solid-exit-to-window-mode.png'); -webkit-mask-image: url('assets/icons/solid-exit-to-window-mode.png');"></div>
+            </button>
+            
+            <div class="fb-divider"></div>
+            
+            <button id="fb-settings" class="btn-icon" title="Settings">
+                <div class="colored-icon" style="transform: scale(1.6); mask-image: url('assets/icons/settings-modal.png'); -webkit-mask-image: url('assets/icons/settings-modal.png');"></div>
+            </button>
+
+            <button id="fb-quit" class="btn-icon btn-danger" title="Close to Tray">
+                <div class="colored-icon" style="transform: scale(1.6); mask-image: url('assets/icons/close-to-tray.png'); -webkit-mask-image: url('assets/icons/close-to-tray.png');"></div>
+            </button>
+        </div>
+    </div>
+    
+    <div id="hotkey-cheat-sheet" style="grid-template-columns: repeat(3, 1fr); width: 800px; max-width: 95vw; gap: 20px; align-items: start;">
+        
+        <div style="display:flex; flex-direction:column; width:100%;">
+            <div class="hk-title" style="grid-column: auto; text-align: left; border-bottom: 1px solid var(--accent);">Create</div>
+            <div class="hk-row"><span class="hk-desc">Arrow (Cycle)</span><span class="hk-key">A</span></div>
+            <div class="hk-row"><span class="hk-desc">Pen Tool</span><span class="hk-key">P</span></div>
+            <div class="hk-row"><span class="hk-desc">Line / Highlt.</span><span class="hk-key">L</span></div>
+            <div class="hk-row"><span class="hk-desc">Square</span><span class="hk-key">S</span></div>
+            <div class="hk-row"><span class="hk-desc">Circle</span><span class="hk-key">C</span></div>
+            <div class="hk-row"><span class="hk-desc">Text Tool</span><span class="hk-key">T</span></div>
+        </div>
+            <div class="hk-row"><span class="hk-desc">Eyedropper</span><span class="hk-key">I</span></div>
+        <div style="display:flex; flex-direction:column; width:100%;">
+            <div class="hk-title" style="grid-column: auto; text-align: left; border-bottom: 1px solid var(--accent);">Utility</div>
+            <div class="hk-row"><span class="hk-desc">Eraser</span><span class="hk-key">E</span></div>
+            <div class="hk-row"><span class="hk-desc">Blur Tool</span><span class="hk-key">B</span></div>
+            <div class="hk-row"><span class="hk-desc">OCR Scanner</span><span class="hk-key">O</span></div>
+            <div class="hk-row"><span class="hk-desc">Magnifier Tool</span><span class="hk-key">Z</span></div>
+            <div class="hk-row"><span class="hk-desc">Stamp (Cycle)</span><span class="hk-key">M</span></div>
+            <div class="hk-row"><span class="hk-desc">Reset Stamp</span><span class="hk-key">Ctrl+R</span></div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; width:100%;">
+            <div class="hk-title" style="grid-column: auto; text-align: left; border-bottom: 1px solid var(--accent);">Edit</div>
+            <div class="hk-row"><span class="hk-desc">Undo</span><span class="hk-key">Ctrl+Z</span></div>
+            <div class="hk-row"><span class="hk-desc">Redo</span><span class="hk-key">Ctrl+Y</span></div>
+            <div class="hk-row"><span class="hk-desc">Nudge Shape</span><span class="hk-key">Arrows</span></div>
+            <div class="hk-row"><span class="hk-desc">Layer Order</span><span class="hk-key">[ &nbsp; / &nbsp; ]</span></div>
+            <div class="hk-row"><span class="hk-desc">Adjust Size</span><span class="hk-key">Scroll</span></div>
+            <div class="hk-row"><span class="hk-desc">Adjust Opacity</span><span class="hk-key">Shift+Scroll</span></div>
+            <div class="hk-row"><span class="hk-desc">Delete</span><span class="hk-key">Del</span></div>
+        </div>
+        
+        <div style="grid-column: 1 / -1; text-align:center; margin-top:10px; padding-top:10px; border-top:1px solid #444; font-size: 11px; color: #888;">
+            Hold <strong>SHIFT</strong> to Snap Angles/Ratio &nbsp;&bull;&nbsp; Release <strong>ALT</strong> to close
+        </div>
+    </div>
+
+    <div id="window-resize-grip"><i class="fa-solid fa-up-right-and-down-left-from-center" style="transform: rotate(90deg);"></i></div>
+
+    <script type="module" src="renderer.js"></script>
+   <div id="sysToast"></div>
+      </body>
+</html>
+
