@@ -5021,3 +5021,28 @@ if (fbReset) {
         }
     };
 }
+
+// ==========================================
+// --- UPDATES & PRO UPGRADE ROUTING ---
+// ==========================================
+const btnCheckUpd = document.getElementById('btnCheckUpdates');
+if (btnCheckUpd) {
+    btnCheckUpd.onclick = (e) => {
+        e.preventDefault();
+        if (IS_PRO_BUILD) {
+            window.electronAPI.send('open-external', 'https://app.lemonsqueezy.com/my-orders/');
+        } else {
+            window.electronAPI.send('open-external', 'https://github.com/Mint-Logic/CapSize/releases');
+        }
+    };
+}
+
+// (Optional) Wire up the "Get Key" button if it exists in your About tab
+const btnUpgradePro = document.getElementById('btnUpgradePro');
+if (btnUpgradePro) {
+    btnUpgradePro.onclick = (e) => {
+        e.preventDefault();
+        // Replace with your actual CapSize Lemon Squeezy checkout link
+        window.electronAPI.send('open-external', 'https://mintlogic.lemonsqueezy.com/'); 
+    };
+}
