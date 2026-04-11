@@ -5025,11 +5025,20 @@ if (fbReset) {
 // ==========================================
 // --- UPDATES & PRO UPGRADE ROUTING ---
 // ==========================================
-const btnCheckUpd = document.getElementById('btnCheckUpdates');
+
+// [FIXED] Matches the kebab-case ID in index.html exactly
+const btnCheckUpd = document.getElementById('btn-check-updates');
+
 if (btnCheckUpd) {
+    // Clear any previous listeners and bind the correct routing
     btnCheckUpd.onclick = (e) => {
         e.preventDefault();
-        if (IS_PRO_BUILD) {
+        e.stopPropagation();
+
+        // Use the live sync check to be 100% sure of the license state
+        const isActuallyPro = window.electronAPI.sendSync('get-is-pro-sync');
+
+        if (isActuallyPro) {
             window.electronAPI.send('open-external', 'https://app.lemonsqueezy.com/my-orders/');
         } else {
             window.electronAPI.send('open-external', 'https://github.com/Mint-Logic/CapSize/releases');
@@ -5037,12 +5046,11 @@ if (btnCheckUpd) {
     };
 }
 
-// (Optional) Wire up the "Get Key" button if it exists in your About tab
+// (Optional) Wire up the "Get Key" button in the About tab
 const btnUpgradePro = document.getElementById('btnUpgradePro');
 if (btnUpgradePro) {
     btnUpgradePro.onclick = (e) => {
         e.preventDefault();
-        // Replace with your actual CapSize Lemon Squeezy checkout link
         window.electronAPI.send('open-external', 'https://mintlogic.lemonsqueezy.com/'); 
     };
 }
