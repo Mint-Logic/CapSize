@@ -5051,6 +5051,6 @@ const btnUpgradePro = document.getElementById('btnUpgradePro');
 if (btnUpgradePro) {
     btnUpgradePro.onclick = (e) => {
         e.preventDefault();
-        window.electronAPI.send('open-external', 'https://mintlogic.lemonsqueezy.com/'); 
+        window.electronAPI.send('open-external', 'https://mintlogic.lemonsqueezy.com/checkout/buy/a6bee67d-b0a0-4e82-a8e0-c7e3a98f0479'); 
     };
 }
