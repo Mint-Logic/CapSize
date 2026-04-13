@@ -1060,14 +1060,23 @@ const doSave = async (e) => {
         const saveResult = await window.electronAPI.invoke('save-image', dataURL, {
             format: userSettings.imageFormat || 'image/png', folder: saveFolder, filename: ExportManager.getFilename(userSettings, AppFeatures, sequenceCounter, backgroundCanvas.width, backgroundCanvas.height), forceDialog: shiftHeld
         });
+        
         if (saveResult === true) {
-            if (AppFeatures.type === 'pro' && userSettings.filenameFmt?.includes('{seq}')) { sequenceCounter++; saveSettings(); }
+            // THE FIX: Removed the broken AppFeatures check. If the setting contains {seq}, we increment!
+            if (userSettings.filenameFmt && userSettings.filenameFmt.includes('{seq}')) { 
+                sequenceCounter++; 
+                saveSettings(); 
+            }
+            
             showToast(saveFolder && !shiftHeld ? "Auto-Saved to Folder" : "Capture Saved");
             doDelete(); 
             if (isFullscreen) { frame.style.display = 'none'; hasSnappedInFullscreen = false; }
             return true;
         }
-    } catch (err) { console.error("Save failed:", err); showToast("Error saving image."); }
+    } catch (err) { 
+        console.error("Save failed:", err); 
+        showToast("Error saving image."); 
+    }
     return false;
 };
 
@@ -1164,6 +1173,12 @@ function updateCanvasSize(newW, newH, keepPosition = false) {
     
     [canvas, backgroundCanvas, scratchCanvas, shapeLayerCanvas].forEach(c => { 
         c.width = innerW; c.height = innerH; 
+        
+        // --- NEW: RESET INLINE CSS ---
+        c.style.width = w + 'px';
+        c.style.height = h + 'px';
+        c.style.left = '0px';
+        c.style.top = '0px';
     });
     [ctx, bgCtx, scratchCtx, shapeLayerCtx].forEach(c => { 
         c.setTransform(1, 0, 0, 1, 0, 0); c.scale(dpr, dpr); 
@@ -1190,6 +1205,16 @@ function initCanvas() {
     if(inpW) inpW.value = w; if(inpH) inpH.value = h;
     updateDPR();
     const innerW = w * dpr; const innerH = h * dpr;
+
+    [canvas, backgroundCanvas, scratchCanvas, shapeLayerCanvas].forEach(c => { 
+        c.width = innerW; c.height = innerH; 
+        
+        // --- NEW: RESET INLINE CSS ---
+        c.style.width = w + 'px';
+        c.style.height = h + 'px';
+        c.style.left = '0px';
+        c.style.top = '0px';
+    });
     
     [canvas, backgroundCanvas, scratchCanvas, shapeLayerCanvas].forEach(c => { c.width = innerW; c.height = innerH; });
     [ctx, bgCtx, scratchCtx, shapeLayerCtx].forEach(c => { 
@@ -3008,7 +3033,11 @@ window.addEventListener('pointerdown', e => {
         const rect = frame.getBoundingClientRect(); const parentRect = frame.parentElement.getBoundingClientRect();
         startResizeW = rect.width; startResizeH = rect.height; startResizeLeft = rect.left - parentRect.left; startResizeTop = rect.top - parentRect.top;
         frame.style.position = 'absolute'; frame.style.left = startResizeLeft + 'px'; frame.style.top = startResizeTop + 'px'; frame.style.width = startResizeW + 'px'; frame.style.height = startResizeH + 'px';
-        frame.style.margin = '0'; frame.style.transform = 'none'; e.stopPropagation(); e.preventDefault(); frame.setPointerCapture(e.pointerId); return;
+        frame.style.margin = '0'; frame.style.transform = 'none'; e.stopPropagation(); e.preventDefault(); frame.setPointerCapture(e.pointerId); 
+        
+        // --- NEW: Cloak the canvases ---
+        [canvas, backgroundCanvas, scratchCanvas, shapeLayerCanvas].forEach(c => c.style.opacity = '0');
+        return;
     }
 
     const visualX = lastClientX; 
@@ -3098,30 +3127,22 @@ window.addEventListener('pointerdown', e => {
         return;
     }
 
-    if (isFullscreen && tool === 'cursor' && !hit && !isDraggingFrame && !isResizing) {
+   if (isFullscreen && tool === 'cursor' && !hit && !isDraggingFrame && !isResizing) {
         frame.classList.remove('clean-slate');
         isCreatingFrame = true;
-        
-        // [THE FIX] Instantly wipe the old image and shapes so they don't stretch!
         shapes = [];
         if (typeof clearBackground === 'function') clearBackground();
         renderMain();
 
-        frame.style.display = 'block'; 
-        frame.style.position = 'absolute'; 
-        frame.style.margin = '0'; 
-        
+        frame.style.display = 'block'; frame.style.position = 'absolute'; frame.style.margin = '0'; 
         const viewportRect = frame.parentElement.getBoundingClientRect();
-        frameStartX = e.clientX - viewportRect.left; 
-        frameStartY = e.clientY - viewportRect.top;
+        frameStartX = e.clientX - viewportRect.left; frameStartY = e.clientY - viewportRect.top;
+        frame.style.left = frameStartX + 'px'; frame.style.top = frameStartY + 'px'; 
+        frame.style.width = '0px'; frame.style.height = '0px';
+        selectedShape = null; frame.setPointerCapture(e.pointerId);
         
-        frame.style.left = frameStartX + 'px'; 
-        frame.style.top = frameStartY + 'px'; 
-        frame.style.width = '0px'; 
-        frame.style.height = '0px';
-        
-        selectedShape = null; 
-        frame.setPointerCapture(e.pointerId);
+        // --- NEW: Cloak the canvases ---
+        [canvas, backgroundCanvas, scratchCanvas, shapeLayerCanvas].forEach(c => c.style.opacity = '0');
         return;
     }
 
@@ -3297,23 +3318,27 @@ window.addEventListener('pointermove', e => {
         if (e.shiftKey) frame.style.cursor = 'crosshair'; else frame.style.cursor = resizeDir + '-resize';
         const dx = e.clientX - startResizeX; const dy = e.clientY - startResizeY;
         let newX = startResizeLeft; let newY = startResizeTop; let newW = startResizeW; let newH = startResizeH;
+        
         if (resizeDir.includes('w')) { newX = startResizeLeft + dx; newW = startResizeW - dx; }
         if (resizeDir.includes('n')) { newY = startResizeTop + dy; newH = startResizeH - dy; }
         if (resizeDir.includes('e')) { newW = startResizeW + dx; }
         if (resizeDir.includes('s')) { newH = startResizeH + dy; }
+        
         if (e.shiftKey) { const size = Math.max(newW, newH); newW = size; newH = size; if (resizeDir.includes('w')) { newX = (startResizeLeft + startResizeW) - size; } if (resizeDir.includes('n')) { newY = (startResizeTop + startResizeH) - size; } }
         const MIN_SIZE = 50; 
         if (newW < MIN_SIZE) { if (resizeDir.includes('w')) newX = startResizeLeft + (startResizeW - MIN_SIZE); newW = MIN_SIZE; }
         if (newH < MIN_SIZE) { if (resizeDir.includes('n')) newY = startResizeTop + (startResizeH - MIN_SIZE); newH = MIN_SIZE; }
+
         frame.style.width = newW + 'px'; frame.style.height = newH + 'px'; 
         frame.style.left = newX + 'px'; frame.style.top = newY + 'px';
-        inpW.value = Math.round(newW); inpH.value = Math.round(newH);
+        if (inpW) inpW.value = Math.round(newW); if (inpH) inpH.value = Math.round(newH);
+
         if (isResizing) {
             const vpRect = frame.parentElement.getBoundingClientRect();
             let dotX = vpRect.left + newX; let dotY = vpRect.top + newY;
             if (resizeDir.includes('e')) { dotX += newW; } else if (!resizeDir.includes('w')) { dotX += newW / 2; }
             if (resizeDir.includes('s')) { dotY += newH; } else if (!resizeDir.includes('n')) { dotY += newH / 2; }
-            cursorDot.style.left = dotX + 'px'; cursorDot.style.top = dotY + 'px'; cursorDot.style.display = 'block';
+            if (cursorDot) { cursorDot.style.left = dotX + 'px'; cursorDot.style.top = dotY + 'px'; cursorDot.style.display = 'block'; }
         }
         updateMeasureTooltip(e.clientX, e.clientY, `<span>W:</span> ${Math.round(newW)}px  <span>H:</span> ${Math.round(newH)}px`);
         return;
@@ -3657,6 +3682,11 @@ window.addEventListener('pointerup', e => {
     isDown = false;
     draggingHandle = 0;
 
+    // --- NEW: Restore the canvases ---
+    [canvas, backgroundCanvas, scratchCanvas, shapeLayerCanvas].forEach(c => c.style.opacity = '1');
+
+    canvas.style.removeProperty('outline');
+
     try {
         if (frame.hasPointerCapture(e.pointerId)) {
             frame.releasePointerCapture(e.pointerId);
@@ -3867,8 +3897,22 @@ handles.forEach(h => {
         isResizing = true; resizeDir = h.dataset.dir; startResizeX = e.clientX; startResizeY = e.clientY;
         const rect = frame.getBoundingClientRect(); const parentRect = frame.parentElement.getBoundingClientRect();
         startResizeW = rect.width; startResizeH = rect.height; startResizeLeft = rect.left - parentRect.left; startResizeTop = rect.top - parentRect.top;
-        frame.style.position = 'absolute'; frame.style.left = startResizeLeft + 'px'; frame.style.top = startResizeTop + 'px'; frame.style.width = startResizeW + 'px'; frame.style.height = startResizeH + 'px';
-        frame.style.margin = '0'; frame.style.transform = 'none'; e.stopPropagation(); e.preventDefault();
+        
+        frame.style.position = 'absolute'; 
+        frame.style.left = startResizeLeft + 'px'; 
+        frame.style.top = startResizeTop + 'px'; 
+        frame.style.width = startResizeW + 'px'; 
+        frame.style.height = startResizeH + 'px';
+        frame.style.margin = '0'; 
+        frame.style.transform = 'none'; 
+        
+        e.stopPropagation(); 
+        e.preventDefault();
+
+        // --- NEW: Cloak the canvases to prevent stretching and double-borders ---
+        [canvas, backgroundCanvas, scratchCanvas, shapeLayerCanvas].forEach(c => {
+            if (c) c.style.opacity = '0';
+        });
     });
 });
 
@@ -5054,3 +5098,29 @@ if (btnUpgradePro) {
         window.electronAPI.send('open-external', 'https://mintlogic.lemonsqueezy.com/checkout/buy/a6bee67d-b0a0-4e82-a8e0-c7e3a98f0479'); 
     };
 }
+
+// ==========================================
+// HIDDEN STATE SCRUBBER (GHOST FRAME FIX)
+// ==========================================
+window.electronAPI.on('scrub-workspace', () => {
+    // 1. Wipe all shapes and active drawings
+    if (typeof doDelete === 'function') doDelete();
+    
+    // 2. Destroy the leftover fullscreen backdrop
+    const backdrop = document.getElementById('backdrop-img');
+    if (backdrop) {
+        backdrop.src = '';
+        backdrop.style.display = 'none';
+    }
+    
+    // 3. Reset UI state so it doesn't flash before correcting itself
+    document.body.classList.remove('fullscreen');
+    const frameEl = document.getElementById('frame');
+    if (frameEl) {
+        frameEl.style.display = 'none';
+        frameEl.classList.add('clean-slate');
+    }
+    if (typeof floatingBar !== 'undefined' && floatingBar) {
+        floatingBar.classList.add('hidden');
+    }
+});
