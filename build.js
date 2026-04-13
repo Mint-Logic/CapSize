@@ -87,6 +87,12 @@ try {
     builderConfig.nsis.oneClick = false;
     builderConfig.nsis.perMachine = true;
     
+    // --- NSIS INSTALLER CONFIGURATION ---
+    // Wire up the new background from the root folder
+    builderConfig.nsis.installerSidebar = "CapSize 164x314.bmp";
+    builderConfig.nsis.uninstallerSidebar = "CapSize 164x314.bmp";
+    // ------------------------------------
+    
     const configPath = path.join(__dirname, 'dist', `temp_builder_config_${type}.json`);
     fs.writeFileSync(configPath, JSON.stringify(builderConfig, null, 2));
 
