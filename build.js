@@ -51,10 +51,8 @@ try {
             console.log(`      ✔️ Preparing ${fileName}...`);
             
             if (staticFiles.includes(fileName)) {
-                // It's an icon, copy it directly
                 fs.copyFileSync(filePath, path.join(tempDir, fileName));
             } else {
-                // It's a JS file, inject the Pro/Core status
                 let content = fs.readFileSync(filePath, 'utf8');
                 if (fileName === 'main.js') {
                     content = content.replace(targetLineRegex, newLine);
@@ -87,11 +85,8 @@ try {
     builderConfig.nsis.oneClick = false;
     builderConfig.nsis.perMachine = true;
     
-    // --- NSIS INSTALLER CONFIGURATION ---
-    // Wire up the new background from the root folder
     builderConfig.nsis.installerSidebar = "CapSize 164x314.bmp";
     builderConfig.nsis.uninstallerSidebar = "CapSize 164x314.bmp";
-    // ------------------------------------
     
     const configPath = path.join(__dirname, 'dist', `temp_builder_config_${type}.json`);
     fs.writeFileSync(configPath, JSON.stringify(builderConfig, null, 2));
