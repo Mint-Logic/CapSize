@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const ALLOWED_SEND_CHANNELS = [
     'request-mode-switch', 'save-app-config', 'migrate-to-pro', 'update-setting', 'close-app', 'minimize-app', 'maximize-app',
     'force-maximize', 'resize-window', 'center-window', 'set-always-on-top', 'set-window-opacity',
-    'move-to-next-display', 'clipboard-write-text', 'clipboard-write-image', 'open-external', 'ondragstart',
+    'move-to-next-display', 'move-to-prev-display', 'clipboard-write-text', 'clipboard-write-image', 'open-external', 'ondragstart',
     'renderer-ready-to-show', 'validate-license', 'renderer-content-ready',
     'toggle-dev-pro', 'hide-window', 'show-window','validate-license-string',
     'nuke-license'   

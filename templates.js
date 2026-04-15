@@ -231,13 +231,18 @@ export const Templates = {
             transform: scale(1.05) !important;
         }
 
-        /* [NEW] CYAN GLOW for Drag-to-Share */
+        /* [NEW] CYAN GLOW for Drag-to-Share (Permanent Resting State) */
+        #btn-drag, #fb-drag {
+            color: #00bcd4 !important; 
+            border: 1px solid #00bcd4 !important; 
+            box-shadow: 0 0 12px rgba(0, 188, 212, 0.6) !important; 
+            background: rgba(0, 0, 0, 0.4) !important; 
+        }
+
         #btn-drag:hover, #fb-drag:hover {
-            background: rgba(0, 188, 212, 0.07) !important;
-            color: #00bcd4 !important; /* Force Cyan Icon */
-            border: 1px solid #00bcd4 !important;
-            box-shadow: 0 0 8px #00bcd4, inset 0 0 10px rgba(0, 188, 212, 0.2) !important;
-            transform: scale(1.05) !important;
+            background: rgba(0, 188, 212, 0.1) !important;
+            box-shadow: 0 0 20px rgba(0, 188, 212, 1.0), inset 0 0 10px rgba(0, 188, 212, 0.3) !important;
+            transform: scale(1.1) !important;
         }
 
      
@@ -1035,8 +1040,8 @@ input:checked + .slider:before {
                                 <label class="toggle"><input type="checkbox" data-setting="alwaysOnTop" ${settings.alwaysOnTop ? 'checked' : ''}><span class="slider"></span></label>
                             </div>
                             <div class="setting-row">
-                                <div class="setting-label">Activation Trigger <div class="setting-desc">Global hotkey to toggle app visibility (e.g. PrintScreen, F12)</div></div>
-                                <input type="text" data-setting="globalHotkey" class="st-input" value="${settings.globalHotkey}" placeholder="PrintScreen">
+                                <div class="setting-label">Activation Trigger <div class="setting-desc">Click inside the box and press your desired shortcut</div></div>
+                                <input type="text" data-setting="globalHotkey" class="st-input" value="${settings.globalHotkey}" placeholder="Press keys..." style="text-align: center; cursor: pointer;">
                             </div>
                             <div class="setting-row">
                                 <div class="setting-label">Precision Metrics <div class="setting-desc">Show dimensions (px) and angles next to cursor while drawing</div></div>
@@ -1652,10 +1657,10 @@ input:checked + .slider:before {
                 <div id="wiz-page-2" class="wizard-page">
                     <div class="wiz-page-title">1. Activation Trigger</div>
                     <div class="wiz-page-content">
-                        <p>Choose a global hotkey to instantly wake CapSize. When the app is hidden, pressing this key will freeze your screen and bring up your tools.</p>
+                        <p>Click inside the input box below and <strong>press the exact keys</strong> on your keyboard that you want to use to wake CapSize.</p>
                         <div class="setting-row" style="margin-top: 20px;">
-                            <div class="setting-label">Global Hotkey <div class="setting-desc">e.g., F12, PrintScreen, or Ctrl+Space</div></div>
-                            <input type="text" data-setting="globalHotkey" class="st-input" value="${settings.globalHotkey}" placeholder="PrintScreen" id="wiz-hotkey-input">
+                            <div class="setting-label">Global Hotkey <div class="setting-desc">Click inside and press your shortcut</div></div>
+                            <input type="text" data-setting="globalHotkey" class="st-input" value="${settings.globalHotkey}" placeholder="Press keys..." id="wiz-hotkey-input" style="text-align: center; cursor: pointer;">
                         </div>
                         <p style="margin-top: 15px;">Active Key: <strong id="wiz-hotkey-display" style="color:var(--accent)">${settings.globalHotkey}</strong></p>
                     </div>
@@ -1781,7 +1786,7 @@ input:checked + .slider:before {
     getRadiusBubbleStyle: () => `
         #radius-bubble {
             position: fixed; 
-            bottom: 80px;       
+            bottom: 50px;        /* Pushed up to safely clear the floating bar */
             left: 50%; 
             transform: translateX(-50%); 
             background: #1e1e1e; 
@@ -1793,9 +1798,15 @@ input:checked + .slider:before {
             align-items: center; 
             gap: 10px;           
             box-shadow: 0 5px 20px rgba(0,0,0,0.6); 
-            z-index: 50000;      
+            z-index: 100005;      /* Forced strictly above the floating bar */
             transition: opacity 0.2s, transform 0.2s;
         }
+
+        /* Override: Fullscreen / Immersive Mode (Jumps up to 100px to clear the bar) */
+body.fullscreen #radius-bubble,
+body.immersive-active #radius-bubble {
+    bottom: 100px !important; 
+}
         #radius-bubble.hidden { display: none !important; }
         #radius-bubble:hover { transform: translateX(-50%) translateY(-2px); }
     `,

@@ -387,7 +387,7 @@ body.fullscreen .viewport {
 }
 
         .size-dot-wrapper { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin: 0 2px; }
-        .size-dot { background: #2e69a3; border-radius: 50%; }
+        .size-dot { background: #8CFA96; border-radius: 50%; }
         
         input[type="range"] { -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important; width: 40px !important; background: transparent !important; cursor: pointer; margin: 0; accent-color: auto; }
         input[type="range"]::-webkit-slider-runnable-track { width: 100%; height: 6px !important; background: #1a1a1a !important; border-radius: 3px; border: 1px solid rgba(140, 250, 150, 0.5) !important; box-shadow: inset 0 1px 2px rgba(0,0,0,0.5) !important; }
@@ -628,14 +628,14 @@ select#font-family, select#fb-font-family {
             <div class="fb-divider" style="height: 32px !important; margin: 0 -2px !important;"></div>
 
             <div style="display: flex; align-items: center; gap: 12px;">
+                <button id="btn-drag" class="btn-icon" title="Drag to Share" draggable="true">
+                    <div class="colored-icon" style="mask-image: url('assets/icons/drag-and-share.png'); -webkit-mask-image: url('assets/icons/drag-and-share.png');"></div>
+                </button>
                 <button id="btn-save" class="btn-icon" title="Save">
                     <div class="colored-icon" style="mask-image: url('assets/icons/save.png'); -webkit-mask-image: url('assets/icons/save.png');"></div>
                 </button>
                 <button id="btn-save-close" class="btn-icon" title="Save and Close to Tray">
                     <div class="colored-icon" style="mask-image: url('assets/icons/output-outline.png'); -webkit-mask-image: url('assets/icons/output-outline.png');"></div>
-                </button>
-                <button id="btn-drag" class="btn-icon" title="Drag to Share" draggable="true">
-                    <div class="colored-icon" style="mask-image: url('assets/icons/drag-and-share.png'); -webkit-mask-image: url('assets/icons/drag-and-share.png');"></div>
                 </button>
                 <button id="btn-fullscreen" class="btn-icon" title="Fullscreen Toggle">
                      <div class="colored-icon" style="mask-image: url('assets/icons/fullscreen-mode.png'); -webkit-mask-image: url('assets/icons/fullscreen-mode.png');"></div>
@@ -827,7 +827,7 @@ select#font-family, select#fb-font-family {
                 <div class="swatch" style="background-color: #000000;" data-c="#000000"></div>
                 <div class="swatch" style="background-color: #ffffff;" data-c="#ffffff"></div>
                 <button class="btn-rgb" id="btn-rgb">+</button>
-                <input type="color" id="color-pk" value="#2e69a3">
+                <input type="color" id="color-pk" value="#8CFA96">
             </div>
 
             <div class="size-dot-wrapper">
@@ -999,7 +999,7 @@ select#font-family, select#fb-font-family {
             <div id="fb-color-trigger" class="color-trigger-btn" title="Change Color"></div>
             
             <div id="fb-color-popup" class="color-popup hidden">
-                 <input type="color" id="fb-color-pk" value="#2e69a3">
+                 <input type="color" id="fb-color-pk" value="#8CFA96">
             </div>
 
             <div class="size-dot-wrapper">
@@ -1016,6 +1016,10 @@ select#font-family, select#fb-font-family {
         <div class="fb-divider"></div>
 
         <div class="fb-section">
+            <button id="fb-drag" class="btn-icon" title="Drag to Share (Click & Hold)" draggable="true" style="color: #00bcd4;">
+                <div class="colored-icon" style="transform: scale(1.6); mask-image: url('assets/icons/drag-and-share.png'); -webkit-mask-image: url('assets/icons/drag-and-share.png');"></div>
+            </button>
+
             <button id="fb-save" class="btn-icon" title="Save" style="color: #00c000; font-size: 16px !important;">
                 <div class="colored-icon" style="transform: scale(1.3); mask-image: url('assets/icons/save.png'); -webkit-mask-image: url('assets/icons/save.png');"></div>
             </button>
@@ -1024,10 +1028,6 @@ select#font-family, select#fb-font-family {
                 <div class="colored-icon" style="transform: scale(1.5); mask-image: url('assets/icons/output-outline.png'); -webkit-mask-image: url('assets/icons/output-outline.png');"></div>
             </button>
             
-            <button id="fb-drag" class="btn-icon" title="Drag to Share (Click & Hold)" draggable="true" style="color: #00bcd4;">
-                <div class="colored-icon" style="transform: scale(1.6); mask-image: url('assets/icons/drag-and-share.png'); -webkit-mask-image: url('assets/icons/drag-and-share.png');"></div>
-            </button>
-
             <button id="fb-del" class="btn-danger btn-icon" title="Clear All">
                 <div class="colored-icon" style="transform: scale(1.5); mask-image: url('assets/icons/trash.png'); -webkit-mask-image: url('assets/icons/trash.png');"></div>
             </button>    

@@ -56,7 +56,12 @@ export const AdvancedTools = {
         
         const srcW = magSize / magZoom; const srcH = magSize / magZoom;
         const srcX = p.x - (srcW / 2); const srcY = p.y - (srcH / 2);
-        ctxM.globalAlpha = 1.0; ctxM.imageSmoothingEnabled = false; 
+        
+        // THE FIX: Enable high-quality smoothing for the magnifier lens
+        ctxM.globalAlpha = 1.0; 
+        ctxM.imageSmoothingEnabled = true; 
+        ctxM.imageSmoothingQuality = 'high'; 
+        
         if (backgroundCanvas.width > 0) ctxM.drawImage(backgroundCanvas, srcX * dpr, srcY * dpr, srcW * dpr, srcH * dpr, 0, 0, magSize, magSize);
         ctxM.drawImage(canvas, srcX * dpr, srcY * dpr, srcW * dpr, srcH * dpr, 0, 0, magSize, magSize);
         ctxM.restore();

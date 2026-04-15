@@ -6,64 +6,58 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "node build.js",
-    "install": "node-gyp rebuild",
-    "prebuild": "prebuildify --napi --strip",
-    "test": "vitest"
+    "start:pro": "cross-env TEST_PRO_MODE=true electron .",
+    "build": "node build.js core",
+    "rebuild": "npm rebuild"
   },
+  "author": "Mint Logic",
+  "license": "MIT",
   "build": {
     "appId": "com.mintlogic.capsize",
     "productName": "CapSize",
     "directories": {
-      "output": "dist"
+      "output": "dist/core"
     },
-    "fileAssociations": [
-      {
-        "ext": "mint",
-        "name": "Mint Logic Cryptographic Seal",
-        "description": "Hardware License Shard for Mint Logic Pro",
-        "icon": "assets/mint-icon.ico",
-        "role": "Viewer"
-      }
-    ],
     "files": [
       "**/*",
       "!dist/*",
-      "!build.js",
-      "!cpp/*",
-      "!binding.gyp"
+      "!node_modules/*",
+      "!**/*.{ts,tsx}",
+      "!build.js"
     ],
-    "asarUnpack": [
-      "**/*.node"
-    ],
-    "win": {
-      "icon": "assets/icon.ico",
-      "target": [
-        "nsis"
-      ]
-    },
+    "fileAssociations": [
+  {
+    "ext": "mint",
+    "name": "Mint Logic Cryptographic Seal",
+    "description": "Hardware License Shard for Mint Logic Pro",
+    "icon": "assets/mint-icon.ico",
+    "role": "Viewer"
+  }
+],
+   "win": {
+  "target": "nsis",
+  "icon": "assets/icon.ico",
+  "executableName": "CapSizeCore"
+},
     "nsis": {
+      "artifactName": "CapSize Core Setup ${version}.${ext}",
+      "shortcutName": "CapSize",
+      "uninstallDisplayName": "CapSize",
       "oneClick": false,
       "perMachine": true,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "runAfterFinish": true
     }
   },
-  "author": {
-    "name": "Mint Logic"
-  },
-  "license": "MIT",
   "dependencies": {
     "bindings": "^1.5.0",
     "node-addon-api": "^8.5.0",
-    "node-machine-id": "^1.1.12"
+    "node-machine-id": "^1.1.12",
+    "tesseract.js": "^5.0.0"
   },
   "devDependencies": {
-    "cross-env": "^10.1.0",
-    "electron": "^28.0.0",
-    "electron-builder": "^24.13.3",
-    "prebuildify": "^6.0.1",
-    "vitest": "^4.1.3"
+    "cross-env": "^7.0.3",
+    "electron": "^39.2.7",
+    "electron-builder": "^24.13.3"
   }
 }

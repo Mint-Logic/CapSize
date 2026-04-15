@@ -2,10 +2,10 @@
 // Holds pure data, defaults, and the user's active settings.
 
 export const SYSTEM_FONTS = [
-    'Arial', 'Arial Black', 'Helvetica', 'Times New Roman', 'Varela Round', 'Rokkitt', 'Permanent Marker', 'Courier New', 'Verdana', 
-    'Georgia', 'Palatino', 'Garamond', 'Bookman',  
-    'Trebuchet MS', 'Impact', 'Lucida Sans Unicode', 'Lucida Console',
-    'Tahoma', 'Courier', 'Comic Sans MS'
+    'Arial', 'Arial Black', 'Trebuchet MS',  'Varela Round',  'Verdana', 
+    'Georgia',  'Palatino', 'Times New Roman', 'Garamond', 'Bookman', 'Tahoma', 
+     'Lucida Sans Unicode', 'Lucida Console', 'Rokkitt', 'Permanent Marker',
+     'Courier', 'Impact', 'Comic Sans MS'
 ];
 
 export const defaultSettings = {
@@ -55,6 +55,7 @@ export const defaultSettings = {
     stampDefaultSize: 40,
     sequenceCounter: 1, 
     defaultFont: 'Arial',
+    defaultColor: '#8CFA96',
     customFonts: [], 
     pinnedFonts: [], 
     hiddenFonts: []  

@@ -1106,21 +1106,27 @@ async function enterFullscreenMode(providedBase64 = null) {
     }
 
     const img = new Image();
-    img.onload = () => {
-        capturedImage = img; 
-        window.electronAPI.send('set-window-opacity', 1);
-        
-        if (backdrop) {
-            backdrop.src = base64;
-            backdrop.style.zIndex = "1";
-            backdrop.style.pointerEvents = 'none'; 
-        }
+    // Inside enterFullscreenMode()
+img.onload = () => {
+    capturedImage = img; 
+    window.electronAPI.send('set-window-opacity', 1);
+    
+    if (backdrop) {
+        backdrop.src = base64;
+        backdrop.style.zIndex = "1";
+        backdrop.style.pointerEvents = 'none'; 
+        backdrop.style.width = '100vw';   // Ensures 200% scale fit
+        backdrop.style.height = '100vh';  // Ensures 200% scale fit
+        backdrop.style.objectFit = 'fill';
+    }
 
-        isFullscreen = true;
-        isWGCFrozen = true;
-        isCreatingFrame = false; 
-        hasSnappedInFullscreen = false;
+    isFullscreen = true;
+    isWGCFrozen = true;
+    isCreatingFrame = false; 
+    hasSnappedInFullscreen = false;
 
+    // ADD THIS TIMEOUT WRAPPER
+    setTimeout(() => {
         w = window.innerWidth;
         h = window.innerHeight;
         if(inpW) inpW.value = w;
@@ -1147,7 +1153,8 @@ async function enterFullscreenMode(providedBase64 = null) {
         
         isSuppressingResize = false;
         window.electronAPI.send('renderer-content-ready');
-    };
+    }, 50); // Give Windows time to stretch the window
+};
     img.src = base64;
 }
 
@@ -1633,6 +1640,9 @@ function updateDynamicTooltip(el, text) { UIManager.updateTooltip(el, text); }
 });
 
 function updateStyle() { 
+    if (!isWGCFrozen && frame.classList.contains('clean-slate')) {
+        frame.classList.remove('clean-slate');
+    }
     if(colorTrigger) colorTrigger.style.backgroundColor = colorPk.value; 
     if(fbColorTrigger) fbColorTrigger.style.backgroundColor = colorPk.value; 
     
@@ -1643,9 +1653,12 @@ function updateStyle() {
         d.style.height = '20px';
         d.style.transform = `scale(${sizeVal / 20})`;
         d.style.opacity = opacitySl.value; 
-        d.style.backgroundColor = userSettings.accentColor; 
+        
+        // THE FIX: Use the active color picker value instead of userSettings.accentColor
+        d.style.backgroundColor = colorPk.value; 
+        
         updateDynamicTooltip(d, sizeVal + ' px');
-    }); 
+    });
     
     const sizeLabel = `Size: ${sizeSl.value}px`;
     updateDynamicTooltip(sizeSl, sizeLabel); updateDynamicTooltip(fbSizeSl, sizeLabel);
@@ -1654,10 +1667,21 @@ function updateStyle() {
 
     if(cursorDot) {
         cursorDot.style.width = sizeSl.value + 'px'; cursorDot.style.height = sizeSl.value + 'px';
-        if(userSettings.cursorStyle === 'outline') {
-            cursorDot.style.backgroundColor = 'transparent'; cursorDot.style.border = '1px solid #1e1e1e';
+        
+        // THE FIX: Explicitly protect the Eraser Brush Mode so it keeps its dual-stroke
+        if (tool === 'eraser' && eraserMode === 'brush') {
+            cursorDot.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'; 
+            cursorDot.style.border = '1px solid #ffffff';
+            cursorDot.style.boxShadow = '0 0 0 1px rgba(0, 0, 0, 0.8)'; // The dark outer ring
+        } 
+        else if(userSettings.cursorStyle === 'outline') {
+            cursorDot.style.backgroundColor = 'transparent'; 
+            cursorDot.style.border = '1px solid #1e1e1e';
+            cursorDot.style.boxShadow = 'none';
         } else {
-            cursorDot.style.backgroundColor = colorPk.value; cursorDot.style.border = 'none';
+            cursorDot.style.backgroundColor = colorPk.value; 
+            cursorDot.style.border = 'none';
+            cursorDot.style.boxShadow = 'none';
         }
     }
     AdvancedTools.updateSyringeLiquid(colorPk.value, false, AppFeatures);
@@ -1675,7 +1699,14 @@ const applyPropertyChange = (prop, value) => {
             const isBold = btnBold.classList.contains('active'); 
             const isItalic = btnItalic.classList.contains('active');
             const sizeVal = prop === 'width' ? value : sizeSl.value;
-            const fontFamVal = prop === 'fontFamily' ? value : fontFam.value;
+            
+            // THE FIX: Extract current font family from the input's dataset so it doesn't default to Arial
+            let currentFam = fontFam.value;
+            if (currentInput.dataset.font) {
+                currentFam = currentInput.dataset.font.replace(/italic|bold|\d+px/g, '').trim() || fontFam.value;
+            }
+            const fontFamVal = prop === 'fontFamily' ? value : currentFam;
+            
             const newFont = `${isItalic?'italic':''} ${isBold?'bold':''} ${(sizeVal * 5)}px ${fontFamVal}`;
             
             currentInput.style.font = newFont; currentInput.dataset.font = newFont; 
@@ -1695,7 +1726,11 @@ const applyPropertyChange = (prop, value) => {
                  const sizeMatch = selectedShape.font.match(/(\d+)px/);
                  let currentShapeSize = sizeMatch ? sizeMatch[1] / 5 : sizeSl.value; 
                  const newSize = prop === 'width' ? value : currentShapeSize;
-                 const newFontFam = prop === 'fontFamily' ? value : fontFam.value;
+                 
+                 // THE FIX: Extract existing font from the shape, so we don't overwrite it
+                 const existingFam = selectedShape.font.replace(/italic|bold|\d+px/g, '').trim();
+                 const newFontFam = prop === 'fontFamily' ? value : existingFam;
+                 
                  selectedShape.font = `${isItalic?'italic':''} ${isBold?'bold':''} ${newSize * 5}px ${newFontFam}`;
             }
         }
@@ -1736,7 +1771,11 @@ function applyEraserCursor() {
         if (cursorDot) cursorDot.style.display = 'none';
     } else {
         frame.style.cursor = 'none'; 
-        if (cursorDot) { cursorDot.style.display = 'block'; cursorDot.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'; cursorDot.style.border = '1px solid #fff'; }
+        if (cursorDot) { 
+            cursorDot.style.display = 'block'; 
+            // Delegate styling to updateStyle so the dual-stroke is applied properly
+            updateStyle(); 
+        }
     }
 }
 
@@ -2012,14 +2051,26 @@ function updateFontDropdowns() {
     const uiMenus = [document.getElementById('font-family-menu'), document.getElementById('fb-font-family-menu')];
     const settingsSelect = document.querySelector('select[data-setting="defaultFont"]');
 
-    // Merge System, Pinned, and Custom fonts (minus hidden ones)
     const allAvailableFonts = [...new Set([
         ...userSettings.pinnedFonts, 
         ...SYSTEM_FONTS, 
         ...userSettings.customFonts.map(f => f.name)
     ])].filter(font => !userSettings.hiddenFonts.includes(font));
 
-    // 1. Populate the Main UI Dropdowns
+    // THE FIX: Clean Dictionary Translator for Windows system fonts
+    const getSafeFontStack = (fontName) => {
+        const aliases = {
+            'Palatino': '"Palatino Linotype", "Book Antiqua", Palatino, serif',
+            'Bookman': '"Bookman Old Style", Bookman, serif',
+            'Courier': '"Courier New", Courier, monospace',
+            'Garamond': 'Garamond, serif',
+            'Georgia': 'Georgia, serif',
+            'Times': '"Times New Roman", Times, serif'
+        };
+        // If it's in the dictionary, use the safe stack. Otherwise, just use the name.
+        return aliases[fontName] || `"${fontName}", sans-serif`;
+    };
+
     uiMenus.forEach(menu => {
         if (!menu) return;
         menu.innerHTML = ''; 
@@ -2027,7 +2078,10 @@ function updateFontDropdowns() {
         allAvailableFonts.forEach(font => {
             const btn = document.createElement('button');
             btn.className = 'dropdown-item font-option';
-            btn.style.fontFamily = `'${font}', sans-serif`;
+            
+            // WIRED UP: We are actually calling the translator now!
+            const fontStack = getSafeFontStack(font);
+            btn.style.setProperty('font-family', fontStack, 'important');
             btn.textContent = font;
             
             if (font === userSettings.defaultFont) btn.classList.add('selected');
@@ -2036,15 +2090,13 @@ function updateFontDropdowns() {
                 e.stopPropagation(); e.preventDefault();
                 userSettings.defaultFont = font;
                 
-                // Update UI Labels
                 document.querySelectorAll('.font-label').forEach(lbl => {
                     lbl.textContent = font;
-                    lbl.style.fontFamily = font;
+                    // WIRED UP: Update the UI label using the translator
+                    lbl.style.setProperty('font-family', fontStack, 'important');
                 });
 
-                // Sync Settings Dropdown so it matches
                 if (settingsSelect) settingsSelect.value = font;
-
                 applyPropertyChange('fontFamily', font);
                 menu.classList.remove('show');
                 saveSettings();
@@ -2053,7 +2105,6 @@ function updateFontDropdowns() {
         });
     });
 
-    // 2. Populate the Settings Modal <select>
     if (settingsSelect) {
         const currentVal = userSettings.defaultFont;
         settingsSelect.innerHTML = '';
@@ -2061,30 +2112,28 @@ function updateFontDropdowns() {
             const opt = document.createElement('option');
             opt.value = font;
             opt.textContent = font;
-            opt.style.fontFamily = `'${font}', sans-serif`;
+            // WIRED UP: Settings menu uses the translator
+            opt.style.setProperty('font-family', getSafeFontStack(font), 'important');
             settingsSelect.appendChild(opt);
         });
         settingsSelect.value = currentVal;
     }
 
-    // 3. Bulletproof the Dropdown Toggles
-document.querySelectorAll('.custom-font-btn').forEach(btn => {
-    // Clone node strips away any conflicting ghostly event listeners
-    const newBtn = btn.cloneNode(true);
-    btn.parentNode.replaceChild(newBtn, btn);
+    document.querySelectorAll('.custom-font-btn').forEach(btn => {
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
 
-    newBtn.addEventListener('click', (e) => {
-        e.preventDefault(); e.stopPropagation();
-        const menu = newBtn.parentElement.querySelector('.dropdown-content');
-        
-        // Close other menus
-        document.querySelectorAll('.dropdown-content.show').forEach(m => {
-            if (m !== menu) m.classList.remove('show');
+        newBtn.addEventListener('click', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            const menu = newBtn.parentElement.querySelector('.dropdown-content');
+            
+            document.querySelectorAll('.dropdown-content.show').forEach(m => {
+                if (m !== menu) m.classList.remove('show');
+            });
+            
+            if (menu) menu.classList.toggle('show');
         });
-        
-        if (menu) menu.classList.toggle('show');
     });
-});
 }
 
 // Kick it off
@@ -2426,6 +2475,31 @@ closeSettings.onclick = toggleSettings;
 const fbSettings = document.getElementById('fb-settings');
 if (fbSettings) fbSettings.onclick = toggleSettings;
 settingsModal.addEventListener('mousedown', (e) => { if (e.target === settingsModal) toggleSettings(); });
+
+// ==========================================
+// ABOUT TAB: WIZARD & TOUR BUTTONS
+// ==========================================
+const btnReplayIntro = document.getElementById('btn-replay-intro');
+if (btnReplayIntro) {
+    btnReplayIntro.onclick = (e) => {
+        e.preventDefault();
+        toggleSettings(); // Close the settings modal first
+        setTimeout(() => {
+            initOnboarding(true); // 'true' forces it to play even if they already saw it
+        }, 150); // Tiny delay to let the settings modal fade out smoothly
+    };
+}
+
+const btnRunSetup = document.getElementById('btn-run-setup');
+if (btnRunSetup) {
+    btnRunSetup.onclick = (e) => {
+        e.preventDefault();
+        toggleSettings(); // Close the settings modal first
+        setTimeout(() => {
+            if (typeof showOnboardingWizard === 'function') showOnboardingWizard();
+        }, 150);
+    };
+}
 
 document.querySelectorAll('[data-setting]').forEach(input => {
     input.addEventListener('change', (e) => {
@@ -2888,6 +2962,24 @@ opacitySl.addEventListener('input', () => { applyPropertyChange('opacity', opaci
 const sync = (a, b, fn) => { a.addEventListener('input', () => { b.value = a.value; fn(); }); b.addEventListener('input', () => { a.value = b.value; fn(); }); };
 sync(sizeSl, fbSizeSl, () => applyPropertyChange('width', sizeSl.value)); sync(opacitySl, fbOpacitySl, () => applyPropertyChange('opacity', opacitySl.value)); 
 
+// ==========================================
+// RADIUS SLIDER WIRING
+// ==========================================
+if (radiusInput) {
+    // Updates the canvas in real-time as you drag
+    radiusInput.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value);
+        userSettings.cornerRadius = val;
+        
+        if (radiusVal) radiusVal.innerText = val + 'px';
+        if (typeof renderMain === 'function') renderMain();
+    });
+    
+    // Saves to your hard drive only when you let go of the mouse
+    radiusInput.addEventListener('change', () => {
+        saveSettings();
+    });
+}
 
 window.addEventListener('wheel', (e) => { 
     if (document.querySelector('.dropdown-content.show')) return;
@@ -3016,6 +3108,22 @@ window.addEventListener('pointerdown', e => {
 
 
     if (e.button === 2) {
+        // [NEW] Toggle the Micro-Lens when right-clicking with the eyedropper
+        if (tool === 'eyedropper') {
+            e.preventDefault();
+            showMicroLens = !showMicroLens;
+            
+            if (showMicroLens) {
+                AdvancedTools.updateEyedropperUnit(lastClientX, lastClientY, frame, w, h, dpr, backgroundCanvas, canvas);
+                if (typeof virtualSyringe !== 'undefined' && virtualSyringe) virtualSyringe.style.display = 'none';
+            } else {
+                if (typeof microLens !== 'undefined' && microLens) microLens.style.display = 'none';
+                if (typeof virtualSyringe !== 'undefined' && virtualSyringe) virtualSyringe.style.display = 'block';
+            }
+            return;
+        }
+
+        // Standard right-click clear for other tools
         if (['stamp', 'blur', 'ocr', 'magnifier'].includes(tool)) {
             e.preventDefault();
             const cursorBtn = document.querySelector('.tool-btn[data-t="cursor"]');
@@ -4060,13 +4168,20 @@ window.addEventListener('drop', async (e) => {
     e.stopPropagation();
     
     dragCounter = 0;
-    dropzone.classList.remove('drag-active');
+    if (dropzone) dropzone.classList.remove('drag-active');
 
     const files = e.dataTransfer.files;
     if (files && files.length > 0 && files[0].name.endsWith('.mint')) {
-        const path = files[0].path; 
-        console.log("Dropping license path:", path);
-        window.electronAPI.send('validate-license', path);
+        try {
+            // THE FIX: Read the text directly in the browser to bypass Electron's Sandbox path restrictions
+            const rawText = await files[0].text();
+            
+            // Send the raw JSON string to the Main Process instead of the stripped file path
+            window.electronAPI.send('validate-license-string', rawText);
+        } catch (err) {
+            console.error("Failed to read dropped license:", err);
+            if (typeof showToast === 'function') showToast("Could not read dropped file.");
+        }
     }
 });
 
@@ -4117,10 +4232,17 @@ if (window.electronAPI.on) {
 });
 
 window.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'ArrowRight') {
-        e.preventDefault();
-        window.electronAPI.send('move-to-next-display');
-        return;
+    // Bidirectional Monitor Jump
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+        if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            window.electronAPI.send('move-to-next-display');
+            return;
+        } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            window.electronAPI.send('move-to-prev-display');
+            return;
+        }
     }
 
     if (e.ctrlKey && e.shiftKey && (e.key === 'L' || e.key === 'l')) {
@@ -4903,6 +5025,10 @@ window.initSpinners();
 injectLateStyles(AppFeatures, userSettings);
 
 // Boot the visuals and apply settings!
+if (userSettings.defaultColor) {
+    if (colorPk) colorPk.value = userSettings.defaultColor;
+    if (fbColorPk) fbColorPk.value = userSettings.defaultColor;
+}
 updateStyle();
 applySettingsToRuntime(); // <--- THIS paints the swatches and applies your settings
 renderPresets();
@@ -4979,6 +5105,16 @@ window.addEventListener('click', (e) => {
         popupMain.dataset.openedBy = '';
     }
 });
+
+// ==========================================
+// [FIXED] STAMP BUBBLE WIRING
+// ==========================================
+if (typeof stampModeToggle !== 'undefined' && stampModeToggle) {
+    stampModeToggle.onclick = (e) => { e.preventDefault(); e.stopPropagation(); toggleStampMode(); };
+}
+if (typeof stampReset !== 'undefined' && stampReset) {
+    stampReset.onclick = (e) => { e.preventDefault(); e.stopPropagation(); resetStampCounter(); };
+}
 
 // 3. Floating Bar Custom Drag
 let isDraggingFB = false;
@@ -5103,24 +5239,52 @@ if (btnUpgradePro) {
 // HIDDEN STATE SCRUBBER (GHOST FRAME FIX)
 // ==========================================
 window.electronAPI.on('scrub-workspace', () => {
-    // 1. Wipe all shapes and active drawings
+    // 1. Wipe shapes
     if (typeof doDelete === 'function') doDelete();
     
-    // 2. Destroy the leftover fullscreen backdrop
+    // 2. Clear backdrop
     const backdrop = document.getElementById('backdrop-img');
-    if (backdrop) {
-        backdrop.src = '';
-        backdrop.style.display = 'none';
-    }
+    if (backdrop) { backdrop.src = ''; backdrop.style.display = 'none'; }
     
-    // 3. Reset UI state so it doesn't flash before correcting itself
+    // 3. THE SOURCE FIX: Reset the frame, but KEEP it display: block
     document.body.classList.remove('fullscreen');
     const frameEl = document.getElementById('frame');
     if (frameEl) {
-        frameEl.style.display = 'none';
-        frameEl.classList.add('clean-slate');
+        frameEl.classList.remove('immersive-active');
+        // We use 'clean-slate' to hide the content, but keep the element block-level
+        frameEl.classList.add('clean-slate'); 
+        frameEl.style.display = 'block'; 
+        frameEl.style.outline = `2px dashed ${userSettings.accentColor || '#8CFA96'}`;
     }
-    if (typeof floatingBar !== 'undefined' && floatingBar) {
-        floatingBar.classList.add('hidden');
+});
+
+// ==========================================
+// WINDOW MODE WAKE-UP HANDLER
+// ==========================================
+window.electronAPI.on('window-shown', () => {
+    const frameEl = document.getElementById('frame');
+    
+    // THE FIX: Force the internal variables back to startup defaults
+    w = userSettings.startupW || 840;
+    h = userSettings.startupH || 340;
+
+    if (frameEl) {
+        frameEl.classList.remove('clean-slate');
+        frameEl.style.display = 'block';
+        // Reset the physical style dimensions
+        frameEl.style.width = w + 'px';
+        frameEl.style.height = h + 'px';
+        frameEl.style.outline = `2px dashed ${userSettings.accentColor || '#8CFA96'}`;
     }
+    
+    // Sync the header inputs so they don't show the old "giant" numbers
+    if (inpW) inpW.value = w;
+    if (inpH) inpH.value = h;
+
+    isFullscreen = false;
+    isWGCFrozen = false;
+    
+    // Repaint the canvases to the new smaller size
+    if (typeof updateCanvasSize === 'function') updateCanvasSize(w, h, true);
+    if (typeof renderMain === 'function') renderMain();
 });

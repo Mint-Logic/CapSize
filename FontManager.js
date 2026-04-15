@@ -37,7 +37,6 @@ export const FontManager = {
             return a.name.localeCompare(b.name);
         });
 
-        // Expose handlers globally so the inline HTML strings can trigger them
         window._fontPinHandler = onPin;
         window._fontVisHandler = onVis;
         window._fontDelHandler = onDel;
@@ -69,7 +68,18 @@ export const FontManager = {
 
             const nameSpan = row.querySelector('.font-name');
             nameSpan.textContent = font.name; 
-            nameSpan.style.fontFamily = `'${font.name}', sans-serif`;
+            // THE FIX: Aggressively force the font family using the dictionary stack
+            const aliases = {
+                'Palatino': '"Palatino Linotype", "Book Antiqua", Palatino, serif',
+                'Bookman': '"Bookman Old Style", Bookman, serif',
+                'Courier': '"Courier New", Courier, monospace',
+                'Garamond': 'Garamond, serif',
+                'Georgia': 'Georgia, serif',
+                'Times': '"Times New Roman", Times, serif'
+            };
+            
+            const fontStack = aliases[font.name] || `"${font.name}", sans-serif`;
+            nameSpan.style.setProperty('font-family', fontStack, 'important');
 
             listContainer.appendChild(row);
         });
@@ -102,7 +112,8 @@ export const FontManager = {
             if(items.length === 0) return '';
             let groupHtml = `<div class="font-optgroup">${label}</div>`;
             items.forEach(f => {
-                groupHtml += `<button class="dropdown-item font-option" data-font="${f.name}" style="font-family: '${f.name}', sans-serif;">
+                // THE FIX: Aggressively force the font family in the HTML string builder
+                groupHtml += `<button class="dropdown-item font-option" data-font="${f.name}" style="font-family: '${f.name}', sans-serif !important;">
                     <span style="pointer-events:none;">${prefix}${f.name}</span>
                 </button>`;
             });
@@ -127,7 +138,10 @@ export const FontManager = {
                         if(btnPair.btn) {
                             btnPair.btn.value = fontName;
                             const label = btnPair.btn.querySelector('.font-label');
-                            if(label) { label.textContent = fontName; label.style.fontFamily = `'${fontName}', sans-serif`; }
+                            if(label) { 
+                                label.textContent = fontName; 
+                                label.style.setProperty('font-family', `"${fontName}", sans-serif`, 'important');
+                            }
                         }
                     });
 
@@ -141,7 +155,10 @@ export const FontManager = {
                 const fallback = allItems[0].name;
                 m.btn.value = fallback;
                 const lbl = m.btn.querySelector('.font-label');
-                if(lbl) { lbl.textContent = fallback; lbl.style.fontFamily = `'${fallback}', sans-serif`; }
+                if(lbl) { 
+                    lbl.textContent = fallback; 
+                    lbl.style.setProperty('font-family', `"${fallback}", sans-serif`, 'important');
+                }
                 if (m.btn.id === 'font-family' && onSelect) onSelect('fontFamily', fallback);
             }
         });

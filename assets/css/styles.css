@@ -1494,10 +1494,10 @@ body.fullscreen #window-resize-grip {
 }
 
 /* --- RADIUS BUBBLE STYLES --- */
+/* Default: Windowed Mode (Sits lower at 50px) */
 #radius-bubble {
     position: fixed;
-    bottom: 80px;
-    /* [FIX 4] Lowered by 20px */
+    bottom: 50px; 
     left: 50%;
     transform: translateX(-50%);
     background: #1e1e1e;
@@ -1509,9 +1509,15 @@ body.fullscreen #window-resize-grip {
     align-items: center;
     gap: 10px;
     box-shadow: 0 5px 20px rgba(0, 0, 0, 0.6);
-    z-index: 50000;
-    /* [FIX 3] Lower than Settings Modal (60000) */
-    transition: opacity 0.2s, transform 0.2s;
+    z-index: 100005;
+    /* Added 'bottom 0.2s' so it smoothly glides up/down when switching modes */
+    transition: opacity 0.2s, transform 0.2s, bottom 0.2s; 
+}
+
+/* Override: Fullscreen / Immersive Mode (Jumps up to 100px to clear the bar) */
+body.fullscreen #radius-bubble,
+body.immersive-active #radius-bubble {
+    bottom: 100px !important; 
 }
 
 #radius-bubble.hidden {
@@ -1521,6 +1527,7 @@ body.fullscreen #window-resize-grip {
 #radius-bubble:hover {
     transform: translateX(-50%) translateY(-2px);
 }
+
 /* --- RESTORED PATCH STYLES (From renderer.js removal) --- */
 canvas { pointer-events: auto !important; display: block; position: absolute; top: 0; left: 0; touch-action: none !important; }
 .green-text, .dims input, .dims span { color: var(--accent) !important; }

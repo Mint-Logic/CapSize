@@ -12,10 +12,30 @@ const {
     clipboard, 
     shell
 } = require('electron');
+
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { machineIdSync } = require('node-machine-id');
+
+// EMERGENCY OS CAPTURE: Bypasses GPU isolation completely
+const getEmergencyPrimaryScreenshot = () => {
+    return new Promise((resolve) => {
+        const { exec } = require('child_process');
+        const psCommand = `powershell.exe -WindowStyle Hidden -NoProfile -Command "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class DPI { [DllImport(\\"user32.dll\\")] public static extern bool SetProcessDPIAware(); }'; [DPI]::SetProcessDPIAware(); Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $s = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $b = New-Object System.Drawing.Bitmap $s.Width, $s.Height; $g = [System.Drawing.Graphics]::FromImage($b); $g.CopyFromScreen($s.X, $s.Y, 0, 0, $b.Size); $m = New-Object System.IO.MemoryStream; $b.Save($m, [System.Drawing.Imaging.ImageFormat]::Png); Write-Output ([Convert]::ToBase64String($m.ToArray()))"`;
+        
+        // Use a 15MB buffer since high-res Base64 strings are large
+        exec(psCommand, { maxBuffer: 1024 * 1024 * 15 }, (err, stdout) => {
+            if (err || !stdout) resolve(null);
+            else resolve('data:image/png;base64,' + stdout.trim());
+        });
+    });
+};
+
+
+
+// FIX: Prevent HDR color washing/darkening on laptop panels
+app.commandLine.appendSwitch('force-color-profile', 'srgb');
 
 // [NEW] Load WGC Sidecar with Explicit Path
 let wgc = null;
@@ -53,7 +73,7 @@ let DEV_FORCE_PRO = process.env.TEST_PRO_MODE === 'true';
 
 
 // --- 1. STANDARDIZED STORAGE PATHS ---
-// (The rest of your code continues normally from here down...)
+
 if (process.platform === 'win32') {
     app.setAppUserModelId('com.mintlogic.capsize');
 }
@@ -286,7 +306,6 @@ ipcMain.on('validate-license', async (event, filePath) => {
         tray.on('click', () => toggleWindow());
     }
 
-    // Landmark: Tray Toggle Logic
 function toggleWindow() {
     if (!mainWindow) return;
     const now = Date.now();
@@ -294,19 +313,35 @@ function toggleWindow() {
     lastToggle = now;
 
     if (mainWindow.isVisible()) {
-        // IMPORTANT: If hiding while in FS, turn FS off so it can wake up normally
-        if (mainWindow.isFullScreen()) {
-            mainWindow.setFullScreen(false);
-        }
-        mainWindow.hide();
+        if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+        mainWindow.webContents.send('scrub-workspace'); 
+        setTimeout(() => mainWindow.hide(), 50); 
     } else {
-        // wake up logic...
-        if (currentSessionMode === 'fs') {
+        // THE FIX: Check if the user prefers FS Mode before showing the window
+        const startInFS = getInitialMode() === 'fs';
+
+        if (startInFS) {
+            // If they want Fullscreen, trigger the capture logic immediately
             performInstantCapture();
         } else {
+            // Otherwise, show the standard windowed mode
+            let startW = 840;
+            let startH = 340;
+
+            if (fs.existsSync(CONFIG_FILE)) {
+                try {
+                    const configData = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+                    startW = configData.startupW || 840;
+                    startH = configData.startupH || 340;
+                } catch (e) { console.error(e); }
+            }
+            
+            mainWindow.setSize(startW + 120, startH + 110);
+            mainWindow.center(); 
             mainWindow.setOpacity(1);
             mainWindow.show();
             mainWindow.focus();
+            mainWindow.webContents.send('window-shown');
         }
     }
 }
@@ -327,74 +362,80 @@ function getInitialMode() {
 async function performInstantCapture() {
     if (!mainWindow) return;
 
-    // If the user hits the hotkey, they WANT to see the app.
-    // We must clear the 'hidden' state if it exists.
     if (process.argv.includes('--hidden')) {
-        // Remove the flag from the session so subsequent actions behave normally
         const index = process.argv.indexOf('--hidden');
         if (index > -1) process.argv.splice(index, 1);
     }
 
-    if (!currentSessionMode) {
-        currentSessionMode = getInitialMode();
-    }
+    if (!currentSessionMode) currentSessionMode = getInitialMode();
 
     if (currentSessionMode === 'fs') {
         const wasVisible = mainWindow.isVisible();
 
-        // 1. CLEAR CAPSIZE (Only if it is physically blocking the screen)
         if (wasVisible) {
+            mainWindow.webContents.send('scrub-workspace'); 
+            await new Promise(r => setTimeout(r, 50)); 
             mainWindow.hide();
             await new Promise(r => setTimeout(r, 150)); 
         }
 
-        // 2. THE 16ms MICRO-FLUSH (WGC EXCLUSIVE)
         try {
+            const point = screen.getCursorScreenPoint();
+            const d = screen.getDisplayNearestPoint(point);
+            const isPrimary = d.id === screen.getPrimaryDisplay().id;
+            
             let base64 = null;
-            if (wgc) {
-                const point = screen.getCursorScreenPoint();
-                
-                // A. Tap the API to wake it up and clear the 5-minute-old stale frame
-                wgc.captureScreen(point.x, point.y); 
-                
-                // B. Wait EXACTLY 16ms (1 monitor frame at 60Hz)
-                // This gives Windows the absolute minimum time needed to composite the live pixels
-                await new Promise(r => setTimeout(r, 16)); 
-                
-                // C. Grab the fresh, live frame
-                const rawBuffer = wgc.captureScreen(point.x, point.y); 
-                
-                if (rawBuffer && rawBuffer.length > 0) {
-                    base64 = `data:image/png;base64,${rawBuffer.toString('base64')}`;
-                }
-            } else {
-                // ELECTRON NATIVE FALLBACK
-                const b = mainWindow.getBounds(); 
-                const d = screen.getDisplayMatching(b);
-                const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) } });
-                const src = sources.find(s => s.display_id === d.id.toString()) || sources[0];
-                if (src) base64 = src.thumbnail.toDataURL();
+            const displays = screen.getAllDisplays();
+
+            // STRATEGY 1: WGC is 100% safe and lightning-fast on Single Monitors
+            if (displays.length === 1 && wgc) {
+                wgc.captureScreen(point.x, point.y);
+                await new Promise(r => setTimeout(r, 50)); 
+                const rawBuffer = wgc.captureScreen(point.x, point.y);
+                if (rawBuffer && rawBuffer.length > 0) base64 = `data:image/png;base64,${rawBuffer.toString('base64')}`;
             }
 
-            // 3. SHOW THE CAPTURE
+            // STRATEGY 2: Native Electron (Handles Multi-Monitor Scaling seamlessly)
+            if (!base64) {
+                const sources = await desktopCapturer.getSources({ 
+                    types: ['screen'], 
+                    thumbnailSize: { 
+                        width: Math.round(d.size.width * d.scaleFactor), 
+                        height: Math.round(d.size.height * d.scaleFactor) 
+                    } 
+                });
+                
+                let src = sources.find(s => s.display_id === d.id.toString());
+                
+                // THE FIX: Fallback to grab the primary screen reliably if exact ID match fails
+                if (!src && isPrimary) {
+                    src = sources.find(s => s.display_id === '0') || sources[0]; 
+                }
+
+                if (src) {
+                    base64 = src.thumbnail.toDataURL();
+                } else if (isPrimary) {
+                    // STRATEGY 3: Hybrid GPU Bug Detected! Use PowerShell Escape Hatch.
+                    base64 = await getEmergencyPrimaryScreenshot();
+                }
+            }
+
             if (base64) {
                 if (mainWindow.isMaximized()) mainWindow.unmaximize();
+                mainWindow.setPosition(d.bounds.x + 50, d.bounds.y + 50); // DPI-safe teleport
+                mainWindow.setOpacity(0); 
+                mainWindow.show(); // Show MUST come first
                 mainWindow.setFullScreen(true);
-                
-                mainWindow.setOpacity(0); // <-- CLOAK BEFORE SHOWING
-                mainWindow.show();
                 mainWindow.focus();
-                // mainWindow.setOpacity(1); // <-- Let renderer.js reveal it
-                
                 mainWindow.webContents.send('wgc-data-received', base64);
             }
         } catch (e) {
             console.error("Hotkey FS Capture Error:", e);
         }
     } else {
-        // --- WINDOWED MODE HOTKEY TOGGLE ---
         if (mainWindow.isVisible()) {
-            mainWindow.hide();
+            mainWindow.webContents.send('scrub-workspace');
+            setTimeout(() => mainWindow.hide(), 50); 
         } else {
             if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
             mainWindow.show();
@@ -486,10 +527,14 @@ ipcMain.on('resize-window', () => { currentSessionMode = 'window'; });
     createWindow(); 
     createTray();
     
-    // [NEW] 3. SILENT WGC WARM-UP (Fixes the first-launch capture bug)
-    if (wgc) {
+    // [NEW] 3. SILENT WGC WARM-UP (Protected against M1 Hybrid GPU)
+    const point = screen.getCursorScreenPoint();
+    const d = screen.getDisplayNearestPoint(point);
+    const isPrimary = d.id === screen.getPrimaryDisplay().id;
+    
+    // Only warm up WGC if we are NOT on the laptop screen
+    if (wgc && !isPrimary) {
         try {
-            const point = screen.getCursorScreenPoint();
             wgc.captureScreen(point.x, point.y); 
         } catch(e) {}
     }
@@ -516,9 +561,18 @@ ipcMain.on('resize-window', () => { currentSessionMode = 'window'; });
         } catch (e) { return { canceled: true, error: e.message }; }
     });
     
-  // Add these simple listeners anywhere in your ipcMain block
-ipcMain.on('hide-window', () => { if (mainWindow) mainWindow.hide(); });
-ipcMain.on('show-window', () => { if (mainWindow) { mainWindow.show(); mainWindow.setOpacity(1); } });
+ipcMain.on('hide-window', () => {
+    if (mainWindow) {
+        mainWindow.webContents.send('scrub-workspace');
+        setTimeout(() => mainWindow.hide(), 50);
+    }
+});
+ipcMain.on('close-app', () => {
+    if (mainWindow) {
+        mainWindow.webContents.send('scrub-workspace');
+        setTimeout(() => mainWindow.hide(), 50);
+    }
+});
 
 // Replace your get-wgc-buffer handler
 ipcMain.handle('get-wgc-buffer', async () => {
@@ -558,29 +612,26 @@ ipcMain.handle('capture-window-mode-wgc', async () => {
     debugLog += "HIDDEN -> ";
 
     try {
-        if (wgc) {
-            debugLog += "WGC LOADED -> ";
+        const b = mainWindow.getBounds(); 
+        const d = screen.getDisplayMatching(b);
+        const isPrimary = d.id === screen.getPrimaryDisplay().id;
+        
+        let base64 = null;
+        const displays = screen.getAllDisplays();
+
+        if (displays.length === 1 && wgc) {
             const point = screen.getCursorScreenPoint();
             wgc.captureScreen(point.x, point.y);
             await new Promise(r => setTimeout(r, 50)); 
-            
             let rawBuffer = wgc.captureScreen(point.x, point.y);
             if (!rawBuffer || rawBuffer.length === 0) {
-                debugLog += "BUFFER 1 EMPTY -> ";
                 await new Promise(r => setTimeout(r, 50));
                 rawBuffer = wgc.captureScreen(point.x, point.y);
             }
-            
-            mainWindow.show();
-            if (rawBuffer && rawBuffer.length > 0) {
-                return { success: true, base64: `data:image/png;base64,${rawBuffer.toString('base64')}` };
-            } else {
-                return { error: debugLog + "BUFFER 2 EMPTY (Blocked by OS)" };
-            }
-        } else {
-            debugLog += "WGC NULL (Fallback Triggered) -> ";
-            const b = mainWindow.getBounds(); 
-            const d = screen.getDisplayMatching(b);
+            if (rawBuffer && rawBuffer.length > 0) base64 = `data:image/png;base64,${rawBuffer.toString('base64')}`;
+        }
+
+        if (!base64) {
             const sources = await desktopCapturer.getSources({ 
                 types: ['screen'], 
                 thumbnailSize: { 
@@ -589,20 +640,27 @@ ipcMain.handle('capture-window-mode-wgc', async () => {
                 } 
             });
             
-            if (!sources || sources.length === 0) {
-                mainWindow.show();
-                return { error: debugLog + "DESKTOPCAPTURER RETURNED 0 SOURCES" };
-            }
-
-            const src = sources.find(s => s.display_id === d.id.toString()) || sources[0];
-            mainWindow.show();
-            
-            if (src && src.thumbnail) {
-                return { success: true, base64: src.thumbnail.toDataURL() };
-            } else {
-                return { error: debugLog + "THUMBNAIL GENERATION FAILED" };
+            let src = sources.find(s => s.display_id === d.id.toString());
+if (!src && isPrimary) {
+    src = sources[0]; // The primary monitor is reliably index 0 in desktopCapturer
+}
+            if (src) {
+                base64 = src.thumbnail.toDataURL();
+            } else if (isPrimary) {
+                base64 = await getEmergencyPrimaryScreenshot();
+            } else if (sources.length > 0) {
+                base64 = sources[0].thumbnail.toDataURL();
             }
         }
+
+        mainWindow.show();
+        
+        if (base64) {
+            return { success: true, base64: base64 };
+        } else {
+            return { error: debugLog + "ALL CAPTURE METHODS FAILED" };
+        }
+        
     } catch (e) {
         mainWindow.show();
         return { error: debugLog + "CRASH: " + e.message };
@@ -616,17 +674,6 @@ ipcMain.on('validate-license-string', async (event, rawJson) => {
         fs.writeFileSync(tempPath, rawJson);
         ipcMain.emit('validate-license', event, tempPath);
     } catch (e) { event.reply('license-response', { success: false, reason: "Manual entry failed." }); }
-});
-
-ipcMain.on('validate-license-string', async (event, rawJson) => {
-    try {
-        const tempPath = path.join(app.getPath('temp'), 'manual_license.mint');
-        fs.writeFileSync(tempPath, rawJson);
-        // Reuse your existing logic
-        ipcMain.emit('validate-license', event, tempPath);
-    } catch (e) {
-        event.reply('license-response', { success: false, reason: "Manual entry failed." });
-    }
 });
 
     ipcMain.handle('get-window-pos', () => {
@@ -798,68 +845,60 @@ ipcMain.on('clipboard-write-text', (event, text) => {
     ipcMain.on('maximize-app', () => { if (mainWindow) mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize(); });
     ipcMain.on('force-maximize', () => { if (mainWindow && !mainWindow.isMaximized()) mainWindow.maximize(); });
     ipcMain.on('minimize-app', () => { if (mainWindow) mainWindow.minimize(); });
-    ipcMain.on('close-app', () => { if (mainWindow) mainWindow.hide(); });
+    ipcMain.on('close-app', () => { if (mainWindow) { mainWindow.webContents.send('scrub-workspace'); mainWindow.hide(); } });
     ipcMain.on('quit-app', () => { app.isQuitting = true; app.quit(); });
     ipcMain.on('set-always-on-top', (e, f) => { if(mainWindow) mainWindow.setAlwaysOnTop(f, 'screen-saver'); });
     ipcMain.on('center-window', () => { if (mainWindow) mainWindow.center(); });
     ipcMain.on('set-window-opacity', (e, o) => { if(mainWindow) mainWindow.setOpacity(o); });
     
-ipcMain.on('move-to-next-display', async () => {
+// Generalized Jump Function
+const jumpDisplay = async (direction) => {
     if (!mainWindow) return;
     const displays = screen.getAllDisplays(); 
     if(displays.length < 2) return;
     
     const b = mainWindow.getBounds(); 
     const curIdx = displays.findIndex(d => d.id === screen.getDisplayMatching(b).id);
-    const nextIdx = (curIdx + 1 + displays.length) % displays.length;
+    const nextIdx = (curIdx + direction + displays.length) % displays.length;
     const next = displays[nextIdx];
     
     if(mainWindow.isMaximized()) mainWindow.unmaximize();
     if(mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
 
-    // Move to the exact center of the new monitor
-    const targetX = Math.floor(next.bounds.x + (next.bounds.width/2));
-    const targetY = Math.floor(next.bounds.y + (next.bounds.height/2));
-    mainWindow.setPosition(targetX - Math.floor(b.width/2), targetY - Math.floor(b.height/2));
+    // DPI-Safe Teleport
+    mainWindow.setPosition(next.bounds.x + 50, next.bounds.y + 50);
     
-    // If in Fullscreen Mode, trigger a fresh capture at the new monitor
     if (currentSessionMode === 'fs') {
         mainWindow.hide();
-        await new Promise(r => setTimeout(r, 250));
+        await new Promise(r => setTimeout(r, 200));
+        
         try {
+            const isPrimary = next.id === screen.getPrimaryDisplay().id;
             let base64 = null;
-            if (wgc) {
-                wgc.captureScreen(targetX, targetY); 
-                await new Promise(r => setTimeout(r, 50)); 
-                const rawBuffer = wgc.captureScreen(targetX, targetY);
-                if (rawBuffer && rawBuffer.length > 0) {
-                    base64 = `data:image/png;base64,${rawBuffer.toString('base64')}`;
-                }
-            }
+
+            const sources = await desktopCapturer.getSources({ 
+                types: ['screen'], 
+                thumbnailSize: { 
+                    width: Math.round(next.size.width * next.scaleFactor), 
+                    height: Math.round(next.size.height * next.scaleFactor) 
+                } 
+            });
             
-            // THE FIX: Fallback to desktopCapturer if WGC returns empty buffer!
-            if (!base64) {
-                console.log("WGC missed monitor jump frame, falling back to desktopCapturer");
-                const sources = await desktopCapturer.getSources({ 
-                    types: ['screen'], 
-                    thumbnailSize: { 
-                        width: Math.round(next.size.width * next.scaleFactor), 
-                        height: Math.round(next.size.height * next.scaleFactor) 
-                    } 
-                });
-                const src = sources.find(s => s.display_id === next.id.toString()) || sources[0];
-                if (src) base64 = src.thumbnail.toDataURL();
+            const src = sources.find(s => s.display_id === next.id.toString());
+            if (src) {
+                base64 = src.thumbnail.toDataURL();
+            } else if (isPrimary) {
+                base64 = await getEmergencyPrimaryScreenshot();
             }
 
             if (base64) {
-                mainWindow.setFullScreen(true);
                 mainWindow.setOpacity(0);
-                mainWindow.show();
+mainWindow.show(); // Show MUST come first
+mainWindow.setFullScreen(true);
                 mainWindow.focus();
-                // Send data to renderer to build the UI
                 mainWindow.webContents.send('wgc-data-received', base64);
             } else {
-                // Total failure: Just show the window so it isn't permanently invisible
+                mainWindow.webContents.send('scrub-workspace');
                 mainWindow.setFullScreen(true);
                 mainWindow.show();
                 mainWindow.setOpacity(1);
@@ -873,73 +912,73 @@ ipcMain.on('move-to-next-display', async () => {
         mainWindow.show();
         mainWindow.webContents.send('window-shown'); 
     }
-});
-}
+};
 
-// [FIXED] EXCLUSIVE WGC HANDLER WITH NATIVE FALLBACK & CACHE FLUSH
+// Wire up both hotkeys (Flipped to match your physical desk layout)
+ipcMain.on('move-to-next-display', () => jumpDisplay(-1));
+ipcMain.on('move-to-prev-display', () => jumpDisplay(1));
+
+// [FIXED] EXCLUSIVE WGC HANDLER WITH NATIVE FALLBACK, CACHE FLUSH, & M1 POWERSHELL FIX
 ipcMain.handle('start-fullscreen-capture', async () => {
     if (!mainWindow) return null;
 
-    // 1. Physically hide the window (Opacity 0 doesn't always force a Windows DWM repaint)
     mainWindow.hide();
-    
-    // 2. Wait for the OS to fully render the desktop without our app in the way
     await new Promise(r => setTimeout(r, 250));
 
     try {
-        if (wgc) {
+        const b = mainWindow.getBounds(); 
+        const d = screen.getDisplayMatching(b);
+        const isPrimary = d.id === screen.getPrimaryDisplay().id;
+
+        let base64 = null;
+        const displays = screen.getAllDisplays();
+
+        if (displays.length === 1 && wgc) {
             const point = screen.getCursorScreenPoint();
-            
-            // --- THE DOUBLE-TAP FIX ---
-            // WGC holds a stale frame in its buffer if it hasn't been used recently.
-            // We request one frame to flush the buffer, wait a tiny tick, and grab the live one.
             wgc.captureScreen(point.x, point.y); 
             await new Promise(r => setTimeout(r, 50)); 
-            
-            const rawBuffer = wgc.captureScreen(point.x, point.y); // The REAL frame
-            
+            const rawBuffer = wgc.captureScreen(point.x, point.y); 
             if (rawBuffer && rawBuffer.length > 0) {
-                if (mainWindow.isMaximized()) mainWindow.unmaximize();
-                mainWindow.setFullScreen(true);
-                
-                mainWindow.setOpacity(0); // <-- CLOAK BEFORE SHOWING
-                mainWindow.show();
-                mainWindow.focus();
-                // mainWindow.setOpacity(1); // <-- Let renderer.js reveal it
-                
-                return `data:image/png;base64,${rawBuffer.toString('base64')}`;
-            }
-        } else {
-            // --- ELECTRON FALLBACK ---
-            console.log("WGC not available, falling back to desktopCapturer");
-            const b = mainWindow.getBounds(); 
-            const d = screen.getDisplayMatching(b);
-            
-            const sources = await desktopCapturer.getSources({ 
-                types: ['screen'], 
-                thumbnailSize: { width: d.size.width * d.scaleFactor, height: d.size.height * d.scaleFactor } 
-            });
-            
-            const src = sources.find(s => s.display_id === d.id.toString()) || sources[0];
-            
-            if (src) {
-                if (mainWindow.isMaximized()) mainWindow.unmaximize();
-                mainWindow.setFullScreen(true);
-                
-                mainWindow.setOpacity(0); // <-- CLOAK BEFORE SHOWING
-                mainWindow.show();
-                mainWindow.focus();
-                // mainWindow.setOpacity(1); // <-- Let renderer.js reveal it
-                
-                return src.thumbnail.toDataURL();
+                base64 = `data:image/png;base64,${rawBuffer.toString('base64')}`;
             }
         }
-    } catch (e) { 
-        console.error("Capture Error:", e); 
-    }
+        
+        if (!base64) {
+            const sources = await desktopCapturer.getSources({ 
+                types: ['screen'], 
+                thumbnailSize: { 
+                    width: Math.round(d.size.width * d.scaleFactor), 
+                    height: Math.round(d.size.height * d.scaleFactor) 
+                } 
+            });
+            
+            let src = sources.find(s => s.display_id === d.id.toString());
+
+            // THE FIX: Fallback to grab the primary screen reliably if exact ID match fails
+            if (!src && isPrimary) {
+                src = sources.find(s => s.display_id === '0') || sources[0]; 
+            }
+
+            if (src) {
+                base64 = src.thumbnail.toDataURL();
+            } else if (isPrimary) {
+                base64 = await getEmergencyPrimaryScreenshot();
+            } 
+        } 
+
+        if (base64) {
+            if (mainWindow.isMaximized()) mainWindow.unmaximize();
+            mainWindow.setOpacity(0); 
+            mainWindow.show(); // Show MUST come first
+            mainWindow.setFullScreen(true);
+            mainWindow.focus();
+            return base64;
+        }
+    } catch (e) { console.error("Capture Error:", e); }
     
-    // Restore if failed
     if (!mainWindow.isVisible()) mainWindow.show();
     mainWindow.setOpacity(1);
     return null;
 });
+
+} // <-- THIS SINGLE BRACE CORRECTLY CLOSES THE gotTheLock 'else' BLOCK AT THE VERY END
