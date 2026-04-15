@@ -299,7 +299,10 @@ function drawShape(c, s) {
         c.translate(center.x, center.y); c.rotate(s.rotation); c.translate(-center.x, -center.y); 
     }
 
-    c.lineWidth = s.width; c.strokeStyle = s.color; c.fillStyle = s.color; c.globalAlpha = s.opacity || 1;
+    c.lineWidth = s.width; 
+c.strokeStyle = s.type === 'eraser-stroke' ? '#000000' : s.color; 
+c.fillStyle = s.type === 'eraser-stroke' ? '#000000' : s.color; 
+c.globalAlpha = s.type === 'eraser-stroke' ? 1 : (s.opacity || 1);
 
     if (s.type === 'ocr-selection') {
         const borderMint = 'rgba(140, 250, 150, 0.8)';
@@ -1409,6 +1412,8 @@ function applySettingsToRuntime() {
     if(typeof currentStampSize !== 'undefined') currentStampSize = userSettings.stampDefaultSize;
     sequenceCounter = parseInt(userSettings.sequenceCounter);
     if(isNaN(sequenceCounter) || sequenceCounter < 1) sequenceCounter = 1;
+    
+refreshToolIcons();
 }
 
 function refreshToolIcons() {
@@ -1431,6 +1436,16 @@ function refreshToolIcons() {
         if (shapeBtn && typeof getShapeIconHtml === 'function') shapeBtn.innerHTML = getShapeIconHtml('star', fillStates['star']);
         if (fbShapeBtn && typeof getShapeIconHtml === 'function') fbShapeBtn.innerHTML = getShapeIconHtml('star', fillStates['star']);
     }
+
+    // THE FIX: Force the Eraser icon to sync every time the UI refreshes
+    const brushIcon = 'assets/icons/eraser.png'; 
+    const objectIcon = 'assets/icons/solid-eraser.png';
+    document.querySelectorAll('.tool-btn[data-t="eraser"]').forEach(btn => {
+        const img = btn.querySelector('.icon-img'); 
+        if (img) img.src = (eraserMode === 'object') ? objectIcon : brushIcon;
+        btn.classList.toggle('solid-mode', eraserMode === 'object');
+    });
+
     if (typeof updateArrowButtonIcon === 'function') updateArrowButtonIcon();
 }
 
@@ -1941,14 +1956,22 @@ function toggleSolidMode(targetTool) {
 }
 
 const toggleEraserMode = () => {
+    // 1. Toggle the variable for the active session ONLY
     eraserMode = eraserMode === 'brush' ? 'object' : 'brush';
-    const brushIcon = 'assets/icons/eraser.png'; const objectIcon = 'assets/icons/solid-eraser.png';
+    
+    // (We removed the saveSettings code from here so it stops overwriting the boot default!)
+
+    const brushIcon = 'assets/icons/eraser.png'; 
+    const objectIcon = 'assets/icons/solid-eraser.png';
     const newTitle = (eraserMode === 'object') ? "Eraser (Object Mode)" : "Eraser (Brush Mode)";
+    
     document.querySelectorAll('.tool-btn[data-t="eraser"]').forEach(btn => {
-        const img = btn.querySelector('.icon-img'); if (img) img.src = (eraserMode === 'object') ? objectIcon : brushIcon;
+        const img = btn.querySelector('.icon-img'); 
+        if (img) img.src = (eraserMode === 'object') ? objectIcon : brushIcon;
         btn.classList.toggle('solid-mode', eraserMode === 'object');
-        updateDynamicTooltip(btn, newTitle);
+        if (typeof updateDynamicTooltip === 'function') updateDynamicTooltip(btn, newTitle);
     });
+    
     if (tool === 'eraser') applyEraserCursor();
 };
 
