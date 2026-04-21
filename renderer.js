@@ -4491,7 +4491,7 @@ window.addEventListener('dblclick', (e) => {
 });
 
 (function() {
-    const handleDragStart = async (e) => {
+   const handleDragStart = async (e) => {
         e.preventDefault();
 
         if (activeTextWrapper) commitActiveText();
@@ -4547,6 +4547,12 @@ window.addEventListener('dblclick', (e) => {
             icon: iconDataURL,
             filename: ExportManager.getFilename(userSettings, AppFeatures, sequenceCounter, backgroundCanvas.width, backgroundCanvas.height)
         });
+
+        // THE FIX: Increment the sequence counter for drag-to-share!
+        if (userSettings.filenameFmt && userSettings.filenameFmt.includes('{seq}')) {
+            sequenceCounter++;
+            saveSettings();
+        }
 
         doDelete();
         
