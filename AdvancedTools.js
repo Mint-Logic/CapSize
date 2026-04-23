@@ -86,93 +86,102 @@ export const AdvancedTools = {
     },
 
     updateEyedropperUnit: function(screenX, screenY, frame, w, h, dpr, backgroundCanvas, canvas) {
-        const microLens = document.getElementById('micro-lens');
-        const virtualSyringe = document.getElementById('virtual-syringe');
-        if (!microLens || !virtualSyringe) return;
+    const microLens = document.getElementById('micro-lens');
+    const virtualSyringe = document.getElementById('virtual-syringe');
+    if (!microLens || !virtualSyringe) return;
 
-        const rect = frame.getBoundingClientRect();
-        const pickX = screenX - rect.left;
-        const pickY = screenY - rect.top;
+    const rect = frame.getBoundingClientRect();
+    const pickX = screenX - rect.left;
+    const pickY = screenY - rect.top;
 
-        if (pickX < -1 || pickY < -1 || pickX > w + 1 || pickY > h + 1) {
-            microLens.style.display = 'none'; virtualSyringe.style.display = 'none';
-            document.body.classList.remove('force-no-cursor'); return;
-        }
+    if (pickX < -1 || pickY < -1 || pickX > w + 1 || pickY > h + 1) {
+        microLens.style.display = 'none'; virtualSyringe.style.display = 'none';
+        document.body.classList.remove('force-no-cursor'); return;
+    }
 
-        document.body.classList.add('force-no-cursor');
-        microLens.style.display = 'block'; virtualSyringe.style.display = 'block';
-        
-        microLens.style.left = (screenX - 30) + 'px'; 
-        microLens.style.top = (screenY - 30) + 'px';
-        virtualSyringe.style.left = (screenX + 9) + 'px'; 
-        virtualSyringe.style.top = (screenY - 73) + 'px'; 
+    document.body.classList.add('force-no-cursor');
+    microLens.style.display = 'block'; virtualSyringe.style.display = 'block';
+    
+    microLens.style.left = (screenX - 30) + 'px'; 
+    microLens.style.top = (screenY - 30) + 'px';
+    virtualSyringe.style.left = (screenX + 9) + 'px'; 
+    virtualSyringe.style.top = (screenY - 73) + 'px'; 
 
-        const ctxM = microLens.getContext('2d');
-        ctxM.imageSmoothingEnabled = false; ctxM.clearRect(0, 0, 60, 60);
-        ctxM.save(); ctxM.beginPath(); ctxM.arc(30, 30, 30, 0, Math.PI*2); ctxM.clip();
-        
-        const sampleSize = 5; 
-        if (backgroundCanvas.width > 0) ctxM.drawImage(backgroundCanvas, Math.floor(pickX * dpr) - (sampleSize/2 * dpr), Math.floor(pickY * dpr) - (sampleSize/2 * dpr), sampleSize * dpr, sampleSize * dpr, 0, 0, 60, 60);
-        ctxM.drawImage(canvas, Math.floor(pickX * dpr) - (sampleSize/2 * dpr), Math.floor(pickY * dpr) - (sampleSize/2 * dpr), sampleSize * dpr, sampleSize * dpr, 0, 0, 60, 60);
+    const ctxM = microLens.getContext('2d');
+    ctxM.imageSmoothingEnabled = false; ctxM.clearRect(0, 0, 60, 60);
+    ctxM.save(); ctxM.beginPath(); ctxM.arc(30, 30, 30, 0, Math.PI*2); ctxM.clip();
+    
+    const sampleSize = 5; 
+    
+    // THE FIX: Calculate physical coordinates and add 0.5 to target the pixel CENTER
+    const physX = Math.floor(pickX * dpr) + 0.5;
+    const physY = Math.floor(pickY * dpr) + 0.5;
+    const offset = (sampleSize / 2) * dpr;
 
-        ctxM.strokeStyle = 'rgba(255, 255, 255, 0.2)'; ctxM.lineWidth = 1;
-        ctxM.beginPath();
-        ctxM.moveTo(30, 8); ctxM.lineTo(30, 22); ctxM.moveTo(30, 38); ctxM.lineTo(30, 52);
-        ctxM.moveTo(8, 30); ctxM.lineTo(22, 30); ctxM.moveTo(38, 30); ctxM.lineTo(52, 30);
-        ctxM.stroke();
+    if (backgroundCanvas.width > 0) {
+        ctxM.drawImage(backgroundCanvas, physX - offset, physY - offset, sampleSize * dpr, sampleSize * dpr, 0, 0, 60, 60);
+    }
+    ctxM.drawImage(canvas, physX - offset, physY - offset, sampleSize * dpr, sampleSize * dpr, 0, 0, 60, 60);
 
-        for (let i = 0; i < 8; i++) {
-            ctxM.save(); 
-            ctxM.translate(30, 30); 
-            ctxM.rotate((i * 45 * Math.PI) / 180);
-            ctxM.beginPath(); 
-            ctxM.moveTo(0, -30); 
-            if (i % 2 === 0) {
-                ctxM.strokeStyle = '#000000'; ctxM.lineWidth = 2; ctxM.lineTo(0, -22); 
-            } else {
-                ctxM.strokeStyle = '#8CFA96'; ctxM.lineWidth = 1.5; ctxM.lineTo(0, -26);
-            }
-            ctxM.stroke(); 
-            ctxM.restore();
-        }
+    ctxM.strokeStyle = 'rgba(255, 255, 255, 0.2)'; ctxM.lineWidth = 1;
+    ctxM.beginPath();
+    ctxM.moveTo(30, 8); ctxM.lineTo(30, 22); ctxM.moveTo(30, 38); ctxM.lineTo(30, 52);
+    ctxM.moveTo(8, 30); ctxM.lineTo(22, 30); ctxM.moveTo(38, 30); ctxM.lineTo(52, 30);
+    ctxM.stroke();
 
-        const centerSize = 60 / sampleSize; 
-        const rectX = 30 - (centerSize/2); const rectY = 30 - (centerSize/2);
-        ctxM.strokeStyle = 'rgba(0, 0, 0, 0.8)'; ctxM.lineWidth = 3; 
-        ctxM.strokeRect(rectX, rectY, centerSize, centerSize);
-        ctxM.strokeStyle = '#8CFA96'; ctxM.lineWidth = 1.5; 
-        ctxM.strokeRect(rectX, rectY, centerSize, centerSize);
-        
-        ctxM.fillStyle = '#FF0055'; ctxM.fillRect(29, 29, 2, 2); 
-
-        const rimGrad = ctxM.createRadialGradient(30, 30, 20, 30, 30, 30);
-        rimGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        rimGrad.addColorStop(0.8, 'rgba(0, 0, 0, 0.15)');
-        rimGrad.addColorStop(1, 'rgba(0, 0, 0, 0.6)');
-        ctxM.fillStyle = rimGrad;
-        ctxM.fillRect(0, 0, 60, 60);
-
-        ctxM.save();
+    for (let i = 0; i < 8; i++) {
+        ctxM.save(); 
         ctxM.translate(30, 30); 
-        ctxM.rotate(45 * Math.PI / 180); 
-
-        ctxM.beginPath();
-        ctxM.arc(0, 0, 26, Math.PI * 1.15, Math.PI * 1.85); 
-        ctxM.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-        ctxM.lineWidth = 2.5;
-        ctxM.lineCap = 'round';
-        ctxM.stroke();
-
-        ctxM.beginPath();
-        ctxM.ellipse(0, -16, 20, 8, 0, 0, Math.PI * 2); 
-        const washGrad = ctxM.createLinearGradient(0, -24, 0, -8); 
-        washGrad.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
-        washGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        ctxM.fillStyle = washGrad;
-        ctxM.fill();
-        
+        ctxM.rotate((i * 45 * Math.PI) / 180);
+        ctxM.beginPath(); 
+        ctxM.moveTo(0, -30); 
+        if (i % 2 === 0) {
+            ctxM.strokeStyle = '#000000'; ctxM.lineWidth = 2; ctxM.lineTo(0, -22); 
+        } else {
+            ctxM.strokeStyle = '#8CFA96'; ctxM.lineWidth = 1.5; ctxM.lineTo(0, -26);
+        }
+        ctxM.stroke(); 
         ctxM.restore();
-    },
+    }
+
+    const centerSize = 60 / sampleSize; 
+    const rectX = 30 - (centerSize/2); const rectY = 30 - (centerSize/2);
+    ctxM.strokeStyle = 'rgba(0, 0, 0, 0.8)'; ctxM.lineWidth = 3; 
+    ctxM.strokeRect(rectX, rectY, centerSize, centerSize);
+    ctxM.strokeStyle = '#8CFA96'; ctxM.lineWidth = 1.5; 
+    ctxM.strokeRect(rectX, rectY, centerSize, centerSize);
+    
+    // THE FIX: Red dot indicator perfectly aligned to the center pixel
+    ctxM.fillStyle = '#FF0055'; ctxM.fillRect(29, 29, 2, 2); 
+
+    const rimGrad = ctxM.createRadialGradient(30, 30, 20, 30, 30, 30);
+    rimGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    rimGrad.addColorStop(0.8, 'rgba(0, 0, 0, 0.15)');
+    rimGrad.addColorStop(1, 'rgba(0, 0, 0, 0.6)');
+    ctxM.fillStyle = rimGrad;
+    ctxM.fillRect(0, 0, 60, 60);
+
+    ctxM.save();
+    ctxM.translate(30, 30); 
+    ctxM.rotate(45 * Math.PI / 180); 
+
+    ctxM.beginPath();
+    ctxM.arc(0, 0, 26, Math.PI * 1.15, Math.PI * 1.85); 
+    ctxM.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctxM.lineWidth = 2.5;
+    ctxM.lineCap = 'round';
+    ctxM.stroke();
+
+    ctxM.beginPath();
+    ctxM.ellipse(0, -16, 20, 8, 0, 0, Math.PI * 2); 
+    const washGrad = ctxM.createLinearGradient(0, -24, 0, -8); 
+    washGrad.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
+    washGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctxM.fillStyle = washGrad;
+    ctxM.fill();
+    
+    ctxM.restore();
+},
 
     performOCR: async function(x, y, w, h, backgroundCanvas, shapes, dpr, drawShapeFn, frame, electronAPI) {
         if (typeof Tesseract === 'undefined') { showToast("Error: Tesseract library missing."); return; }

@@ -1,29 +1,26 @@
 /* varela-round-regular - latin */
 @font-face {
-  font-display: swap;
   font-family: 'Varela Round';
   font-style: normal;
   font-weight: 400;
-  /* CHANGED: ../fonts/ to ../webfonts/ */
+  font-display: block; 
   src: url('../webfonts/varela-round-v21-latin-regular.woff2') format('woff2'); 
 }
 
 /* permanent-marker-regular - latin */
 @font-face {
-  font-display: swap;
   font-family: 'Permanent Marker';
   font-style: normal;
   font-weight: 400;
-  /* CHANGED: ../fonts/ to ../webfonts/ */
+  font-display: block;
   src: url('../webfonts/permanent-marker-v16-latin-regular.woff2') format('woff2'); 
 }
 
 /* rokkitt-regular - latin */
 @font-face {
-  font-display: swap;
   font-family: 'Rokkitt';
   font-style: normal;
   font-weight: 400;
-  /* CHANGED: ../fonts/ to ../webfonts/ */
+  font-display: block;
   src: url('../webfonts/rokkitt-v39-latin-regular.woff2') format('woff2'); 
 }

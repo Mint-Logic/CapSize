@@ -244,46 +244,42 @@ function renderMain() {
 
 function drawGrid(c) {
     c.save();
-    // Reset to raw pixels to ensure lines are crisp 1px lines
     c.setTransform(1, 0, 0, 1, 0, 0); 
     
-    // Scale manually for High DPI
     const scale = dpr; 
-
     const s = (parseInt(userSettings.gridSize) || 20) * scale;
     const opacity = userSettings.gridOpacity || 0.6;
-    const accent = userSettings.accentColor || '#8CFA96';
+    const accent = userSettings.accentColor || '#8CFA96'; // Mint
     
-    // Calculate physical width/height
     const pW = c.canvas.width;
     const pH = c.canvas.height;
-
-    // Center point in physical pixels
     const cX = Math.round(pW / 2);
     const cY = Math.round(pH / 2);
 
-    c.globalAlpha = opacity;
-    c.strokeStyle = accent; // Pure Mint
-
-    // 2. Draw the standard 1px grid
+    // --- PASS 1: THE SQUARES (SUBTLE GRAY) ---
+    // Using a light gray at a reduced opacity for a professional look
+    c.strokeStyle = `rgba(136, 136, 136, ${opacity * 0.5})`; 
     c.lineWidth = 1; 
     c.beginPath();
     
-    // Add 0.5 to offset the 1px line width so it lands perfectly between pixels
+    // Draw vertical lines
     for (let x = cX; x <= pW; x += s) { c.moveTo(Math.floor(x) + 0.5, 0); c.lineTo(Math.floor(x) + 0.5, pH); }
     for (let x = cX - s; x >= 0; x -= s) { c.moveTo(Math.floor(x) + 0.5, 0); c.lineTo(Math.floor(x) + 0.5, pH); }
 
+    // Draw horizontal lines
     for (let y = cY; y <= pH; y += s) { c.moveTo(0, Math.floor(y) + 0.5); c.lineTo(pW, Math.floor(y) + 0.5); }
     for (let y = cY - s; y >= 0; y -= s) { c.moveTo(0, Math.floor(y) + 0.5); c.lineTo(pW, Math.floor(y) + 0.5); }
-
     c.stroke();
 
-    // 3. Draw the thicker center crosshairs
-    c.lineWidth = 2; // Thicker line for the center
+    // --- PASS 2: THE CENTER CROSSHAIR (MINT) ---
+    c.strokeStyle = accent; 
+    c.lineWidth = 2; // Thicker as requested
+    c.globalAlpha = opacity;
     c.beginPath();
     
-    // For a 2px line, whole numbers align perfectly (no 0.5 offset needed)
+    // Vertical center
     c.moveTo(cX, 0); c.lineTo(cX, pH);
+    // Horizontal center
     c.moveTo(0, cY); c.lineTo(pW, cY);
     
     c.stroke();
@@ -608,7 +604,16 @@ function drawSelectionHandles(c, s) {
         drawHandleCircle(c, h2x, h2y, userSettings.accentColor);
         
         let cx = s.cp ? s.cp.x : (s.x + s.ex) / 2; let cy = s.cp ? s.cp.y : (s.y + s.ey) / 2;
-        if (s.curveMode) { c.beginPath(); c.rect(cx - 5, cy - 5, 10, 10); c.fillStyle = '#ffcc00'; c.fill(); c.strokeStyle = '#000'; c.lineWidth = 1; c.stroke(); } 
+        if (s.curveMode) { 
+    c.beginPath(); 
+    c.rect(cx - 5, cy - 5, 10, 10); 
+    c.fillStyle = '#ffcc00'; 
+    c.fill(); 
+    
+    c.strokeStyle = '#888888';
+    c.lineWidth = 1;          
+    c.stroke(); 
+}
         else drawHandleCircle(c, cx, cy, userSettings.accentColor);
         return;
     }
@@ -622,10 +627,20 @@ function drawSelectionHandles(c, s) {
     const halfW = s.w / 2; const halfH = s.h / 2; const handleY = (s.h > 0 ? -halfH : halfH) - ROTATION_HANDLE_OFFSET;
 
     if (s.type !== 'stamp' && s.type !== 'pen') {
-        c.beginPath(); c.moveTo(0, (s.h > 0 ? -halfH : halfH)); c.lineTo(0, handleY);
-        c.strokeStyle = userSettings.accentColor; c.lineWidth = 1; c.setLineDash([]); c.stroke();
-        drawHandleCircle(c, 0, handleY, userSettings.accentColor);
-    }
+    c.beginPath(); 
+    // This draws the line from the top of the shape to the rotation handle
+    c.moveTo(0, (s.h > 0 ? -halfH : halfH)); 
+    c.lineTo(0, handleY);
+    
+    // THE FIX: Change from accentColor or black to subtle gray
+    c.strokeStyle = '#888888'; 
+    c.lineWidth = 1; // Thinned to 1px to match the handles
+    c.setLineDash([]); 
+    c.stroke();
+    
+    // Then the handle itself is drawn
+    drawHandleCircle(c, 0, handleY, '#888888'); 
+}
 
     drawHandleCircle(c, -halfW, -halfH, userSettings.accentColor); drawHandleCircle(c, halfW, -halfH, userSettings.accentColor);
     drawHandleCircle(c, halfW, halfH, userSettings.accentColor); drawHandleCircle(c, -halfW, halfH, userSettings.accentColor);
@@ -643,13 +658,32 @@ function drawSelectionHandles(c, s) {
 }
 
 function drawHandleCircle(c, x, y, color) { 
-    c.beginPath(); c.setLineDash([]); c.shadowColor = 'rgba(0,0,0,0.3)'; c.shadowBlur = 3; c.shadowOffsetX = 0; c.shadowOffsetY = 0;
-    c.arc(x, y, 5, 0, Math.PI * 2); c.fillStyle = '#ffffff'; c.fill(); c.strokeStyle = color; c.lineWidth = 1.5; c.stroke(); 
+    c.beginPath(); 
+    c.setLineDash([]); 
+    c.shadowColor = 'rgba(0,0,0,0.2)'; // Lightened shadow
+    c.shadowBlur = 3; 
+    c.arc(x, y, 5, 0, Math.PI * 2); 
+    c.fillStyle = '#ffffff'; 
+    c.fill(); 
+    
+    // THE TWEAK: Subtler gray and thinner stroke
+    c.strokeStyle = '#888888'; // Deep gray instead of black
+    c.lineWidth = 1; // Thinned from 1.5
+    c.stroke(); 
 }
 
 function drawHandleSquare(c, x, y) { 
-    c.beginPath(); c.setLineDash([]); c.shadowColor = 'rgba(0,0,0,0.3)'; c.shadowBlur = 3; c.shadowOffsetX = 0; c.shadowOffsetY = 0;
-    const s = 10; c.rect(x - s/2, y - s/2, s, s); c.fillStyle = '#ffffff'; c.fill(); c.strokeStyle = userSettings.accentColor; c.lineWidth = 1.5; c.stroke(); 
+    c.beginPath(); 
+    c.setLineDash([]); 
+    const s = 10; 
+    c.rect(x - s/2, y - s/2, s, s); 
+    c.fillStyle = '#ffffff'; 
+    c.fill(); 
+    
+    // THE TWEAK: Match the circle handle style
+    c.strokeStyle = '#888888';
+    c.lineWidth = 1;
+    c.stroke(); 
 }
 
 function applyShadow(ctx, on) { 
@@ -1540,28 +1574,41 @@ function pickColorAt(x, y) {
     
     if (targetX < 0 || targetY < 0 || targetX > w || targetY > h) return;
 
-    const centerX = Math.floor(targetX * dpr);
-    const centerY = Math.floor(targetY * dpr);
+    // THE FIX: Floor the coordinate and add 0.5 to target the geometric CENTER of the pixel
+    const centerX = Math.floor(targetX * dpr) + 0.5;
+    const centerY = Math.floor(targetY * dpr) + 0.5;
+
     const getHex = (dx, dy) => {
-        const ink = ctx.getImageData(dx, dy, 1, 1).data;
+        // We use Math.floor here because getImageData expects integer coordinates, 
+        // but our dx/dy center-offset ensures we are sampling the correct pixel area.
+        const ink = ctx.getImageData(Math.floor(dx), Math.floor(dy), 1, 1).data;
         if (ink[3] > 0) return "#" + ((1 << 24) + (ink[0] << 16) + (ink[1] << 8) + ink[2]).toString(16).slice(1);
-        const bg = bgCtx.getImageData(dx, dy, 1, 1).data;
+        
+        const bg = bgCtx.getImageData(Math.floor(dx), Math.floor(dy), 1, 1).data;
         if (bg[3] === 0) return null; 
         return "#" + ((1 << 24) + (bg[0] << 16) + (bg[1] << 8) + bg[2]).toString(16).slice(1);
     };
 
     let finalHex = getHex(centerX, centerY);
     if (!finalHex) {
+        // If the center is transparent, check immediate integer neighbors
         const neighbors = [[0, -1], [-1, 0], [1, 0], [0, 1]];
-        for (let offset of neighbors) { finalHex = getHex(centerX + offset[0], centerY + offset[1]); if (finalHex) break; }
+        for (let offset of neighbors) { 
+            finalHex = getHex(centerX + offset[0], centerY + offset[1]); 
+            if (finalHex) break; 
+        }
     }
     if (!finalHex) return; 
 
     colorPk.value = finalHex; 
     if (typeof updateStyle === 'function') updateStyle(); 
     if (typeof applyPropertyChange === 'function') applyPropertyChange('color', finalHex);
+    
+    // Sync the syringe visual state
     AdvancedTools.updateSyringeLiquid(finalHex, true, AppFeatures); 
-    setTimeout(() => { AdvancedTools.updateSyringeLiquid(finalHex, false, AppFeatures); }, 150);
+    setTimeout(() => { 
+        AdvancedTools.updateSyringeLiquid(finalHex, false, AppFeatures); 
+    }, 150);
 }
 
 function injectTools(container) {
@@ -1680,25 +1727,28 @@ function updateStyle() {
     const opacityLabel = `Opacity: ${Math.round(opacitySl.value * 100)}%`;
     updateDynamicTooltip(opacitySl, opacityLabel); updateDynamicTooltip(fbOpacitySl, opacityLabel);
 
-    if(cursorDot) {
-        cursorDot.style.width = sizeSl.value + 'px'; cursorDot.style.height = sizeSl.value + 'px';
-        
-        // THE FIX: Explicitly protect the Eraser Brush Mode so it keeps its dual-stroke
-        if (tool === 'eraser' && eraserMode === 'brush') {
-            cursorDot.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'; 
-            cursorDot.style.border = '1px solid #ffffff';
-            cursorDot.style.boxShadow = '0 0 0 1px rgba(0, 0, 0, 0.8)'; // The dark outer ring
-        } 
-        else if(userSettings.cursorStyle === 'outline') {
-            cursorDot.style.backgroundColor = 'transparent'; 
-            cursorDot.style.border = '1px solid #1e1e1e';
-            cursorDot.style.boxShadow = 'none';
-        } else {
-            cursorDot.style.backgroundColor = colorPk.value; 
-            cursorDot.style.border = 'none';
-            cursorDot.style.boxShadow = 'none';
-        }
+    // --- Inside updateStyle in renderer.js ---
+if(cursorDot) {
+    cursorDot.style.width = sizeSl.value + 'px'; 
+    cursorDot.style.height = sizeSl.value + 'px';
+    
+    if (tool === 'eraser' && eraserMode === 'brush') {
+        cursorDot.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'; 
+        cursorDot.style.border = '1px solid #ffffff';
+        // THE FIX: Change the outer shadow ring to your subtle gray
+        cursorDot.style.boxShadow = '0 0 0 1px #888888'; 
+    } 
+    else if(userSettings.cursorStyle === 'outline') {
+        cursorDot.style.backgroundColor = 'transparent'; 
+        // THE FIX: Update the standard outline cursor to match
+        cursorDot.style.border = '1px solid #888888'; 
+        cursorDot.style.boxShadow = 'none';
+    } else {
+        cursorDot.style.backgroundColor = colorPk.value; 
+        cursorDot.style.border = 'none';
+        cursorDot.style.boxShadow = 'none';
     }
+}
     AdvancedTools.updateSyringeLiquid(colorPk.value, false, AppFeatures);
 }
 
@@ -2080,19 +2130,25 @@ function updateFontDropdowns() {
         ...userSettings.customFonts.map(f => f.name)
     ])].filter(font => !userSettings.hiddenFonts.includes(font));
 
-    // THE FIX: Clean Dictionary Translator for Windows system fonts
-    const getSafeFontStack = (fontName) => {
-        const aliases = {
-            'Palatino': '"Palatino Linotype", "Book Antiqua", Palatino, serif',
-            'Bookman': '"Bookman Old Style", Bookman, serif',
-            'Courier': '"Courier New", Courier, monospace',
-            'Garamond': 'Garamond, serif',
-            'Georgia': 'Georgia, serif',
-            'Times': '"Times New Roman", Times, serif'
-        };
-        // If it's in the dictionary, use the safe stack. Otherwise, just use the name.
-        return aliases[fontName] || `"${fontName}", sans-serif`;
+   // THE FIX: Updated Dictionary Translator for optimized Pro Suite fonts
+const getSafeFontStack = (fontName) => {
+    const aliases = {
+        // --- Retired Aliases removed for clarity ---
+        'Garamond': 'Garamond, "EB Garamond", serif',
+        'Georgia': 'Georgia, serif',
+        'Courier New': '"Courier New", Courier, monospace',
+        'Lucida Console': '"Lucida Console", "Courier New", monospace',
+        
+        // --- NEW: Casual & Hand-Drawn Fallbacks ---
+        'Segoe Print': '"Segoe Print", "Bradley Hand", cursive',
+        'Ink Free': '"Ink Free", "Segoe Script", cursive',
+        'Permanent Marker': '"Permanent Marker", Impact, sans-serif'
     };
+    
+    // If it's in the dictionary, use the safe stack. 
+    // Otherwise, wrap in quotes and default to sans-serif for safety.
+    return aliases[fontName] || `"${fontName}", sans-serif`;
+};
 
     uiMenus.forEach(menu => {
         if (!menu) return;
@@ -2771,27 +2827,34 @@ hotkeyInputs.forEach(input => {
 
 window.addEventListener('keydown', (e) => {
     if (tool === 'eyedropper') {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            const rect = frame.getBoundingClientRect();
-            const x = (typeof lastClientX !== 'undefined' && lastClientX !== 0) ? lastClientX : (rect.left + rect.width/2);
-            const y = (typeof lastClientY !== 'undefined' && lastClientY !== 0) ? lastClientY : (rect.top + rect.height/2);
-            pickColorAt(x - rect.left, y - rect.top);
-            return;
-        }
-        if (e.key.startsWith('Arrow')) {
-            e.preventDefault();
-            const step = e.shiftKey ? 10 : 1;
-            if (e.key === 'ArrowUp') lastClientY -= step;
-            if (e.key === 'ArrowDown') lastClientY += step;
-            if (e.key === 'ArrowLeft') lastClientX -= step;
-            if (e.key === 'ArrowRight') lastClientX += step;
-            
-            showMicroLens = true; 
-            AdvancedTools.updateEyedropperUnit(lastClientX, lastClientY, frame, w, h, dpr, backgroundCanvas, canvas);
-            return;
-        }
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        const rect = frame.getBoundingClientRect();
+        const x = lastClientX - rect.left;
+        const y = lastClientY - rect.top;
+        pickColorAt(x, y);
+        return;
     }
+    if (e.key.startsWith('Arrow')) {
+        e.preventDefault();
+        
+        // THE PRECISION CALCULATION:
+        // We divide by 'dpr' to move exactly 1 physical pixel.
+        // At 200% (dpr=2), step is 0.5. At 100% (dpr=1), step is 1.
+        const step = e.shiftKey ? 10 : (1 / dpr);
+        
+        if (e.key === 'ArrowUp') lastClientY -= step;
+        if (e.key === 'ArrowDown') lastClientY += step;
+        if (e.key === 'ArrowLeft') lastClientX -= step;
+        if (e.key === 'ArrowRight') lastClientX += step;
+        
+        showMicroLens = true; 
+        
+        // Refresh with the fractional coordinate (AdvancedTools handles the floor+0.5 center logic)
+        AdvancedTools.updateEyedropperUnit(lastClientX, lastClientY, frame, w, h, dpr, backgroundCanvas, canvas);
+        return;
+    }
+}
 
     if (e.key === 'Escape') {
         e.preventDefault(); e.stopPropagation();
@@ -2841,17 +2904,42 @@ window.addEventListener('keydown', (e) => {
         if (AppFeatures.allowedShapes.includes('check') && k === 'v') { const btn = document.querySelector(`.dropdown-item[data-sub="check"]`); if(btn) btn.click(); return; }
 
         if (k === 'a') {
-            const styles = AppFeatures.allowedArrowStyles;
-            if (styles.length <= 1) { tool='arrow'; const arrowBtn=document.getElementById('btn-arrow-multi'); if(arrowBtn) handleToolClick(arrowBtn); return; }
-            if (tool === 'arrow') {
-                let currentIdx = styles.indexOf(userSettings.arrowStyle);
-                let nextIdx = currentIdx + 1; if (nextIdx >= styles.length) nextIdx = 0;
-                userSettings.arrowStyle = styles[nextIdx]; saveSettings(); updateArrowButtonIcon();
-                showToast(`Arrow Style: ${styles[nextIdx]}`);
-                if (selectedShape && selectedShape.type === 'arrow') { saveState(); renderMain(); }
-            } else tool = 'arrow';
-            const arrowBtn = document.getElementById('btn-arrow-multi'); if(arrowBtn) handleToolClick(arrowBtn); return;
+    const styles = AppFeatures.allowedArrowStyles;
+    
+    // 1. If only one style is allowed (Core), just switch to the tool
+    if (styles.length <= 1) { 
+        tool = 'arrow'; 
+        const arrowBtn = document.getElementById('btn-arrow-multi'); 
+        if (arrowBtn) handleToolClick(arrowBtn); 
+        return; 
+    }
+    
+    // 2. If already using the arrow tool, cycle the style for the NEXT arrow
+    if (tool === 'arrow') {
+        let currentIdx = styles.indexOf(userSettings.arrowStyle);
+        let nextIdx = (currentIdx + 1) % styles.length;
+        const newStyle = styles[nextIdx];
+        
+        userSettings.arrowStyle = newStyle;
+        saveSettings(); // Persists the choice for the next click-and-drag
+        updateArrowButtonIcon(); // Updates the UI icon to show the new "loaded" style
+        showToast(`Next Arrow: ${newStyle}`);
+
+        // 3. If a specific arrow is SELECTED, update only that one
+        if (selectedShape && selectedShape.type === 'arrow') {
+            selectedShape.arrowStyle = newStyle;
+            saveState(); // Record for undo/redo
+            renderMain(); // Repaint just this change
         }
+    } else {
+        // 4. If not in arrow tool, switch to it
+        tool = 'arrow';
+    }
+    
+    const arrowBtn = document.getElementById('btn-arrow-multi'); 
+    if (arrowBtn) handleToolClick(arrowBtn); 
+    return;
+}
 
         if (k === 'p') { const btn = document.querySelector('.tool-btn[data-t="pen"]'); if(btn) handleToolClick(btn); return; }
         if (k === 'l') { const btn = document.querySelector('.tool-btn[data-t="line"]'); if(btn) handleToolClick(btn); return; }

@@ -2,10 +2,28 @@
 // Holds pure data, defaults, and the user's active settings.
 
 export const SYSTEM_FONTS = [
-    'Arial', 'Arial Black', 'Trebuchet MS',  'Varela Round',  'Verdana', 
-    'Georgia',  'Palatino', 'Times New Roman', 'Garamond', 'Bookman', 'Tahoma', 
-     'Lucida Sans Unicode', 'Lucida Console', 'Rokkitt', 'Permanent Marker',
-     'Courier', 'Impact', 'Comic Sans MS'
+// --- Sans-Serif (Clean & Modern) ---
+    'Arial', 
+    'Arial Black', 
+    'Impact', 
+    'Verdana', 
+    'Tahoma', 
+    'Trebuchet MS', 
+    'Varela Round', 
+
+    // --- Serif (Elegant & Sturdy) ---
+    'Garamond', 
+    'Georgia', 
+    'Rokkitt', 
+
+    // --- Technical (Code & Data) ---
+    'Courier New', 
+    'Lucida Console', 
+
+    // --- Casual & Hand-Drawn (The Comic Sans Killers) ---
+    'Segoe Print',      // Architect-style handwriting (Standard on Windows)
+    'Ink Free',         // Natural felt-tip pen look (Standard on Windows 10/11)
+    'Permanent Marker'  // High-visibility "Sharpie" style
 ];
 
 export const defaultSettings = {

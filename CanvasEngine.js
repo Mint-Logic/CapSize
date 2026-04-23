@@ -88,24 +88,46 @@ export function renderMain() {
 }
 
 export function drawGrid(c) {
-    c.save();
+c.save();
     c.setTransform(1, 0, 0, 1, 0, 0); 
+    
     const scale = dpr; 
     const s = (parseInt(userSettings.gridSize) || 20) * scale;
     const opacity = userSettings.gridOpacity || 0.6;
-    const accent = userSettings.accentColor || '#8CFA96';
-    const pW = c.canvas.width; const pH = c.canvas.height;
-    const cX = Math.round(pW / 2); const cY = Math.round(pH / 2);
+    const accent = userSettings.accentColor || '#8CFA96'; // Mint
+    
+    const pW = c.canvas.width;
+    const pH = c.canvas.height;
+    const cX = Math.round(pW / 2);
+    const cY = Math.round(pH / 2);
 
-    c.lineWidth = 1; c.beginPath();
-    for (let x = cX; x < pW; x += s) { c.moveTo(Math.floor(x) + 0.5, 0); c.lineTo(Math.floor(x) + 0.5, pH); }
-    for (let x = cX - s; x > 0; x -= s) { c.moveTo(Math.floor(x) + 0.5, 0); c.lineTo(Math.floor(x) + 0.5, pH); }
-    for (let y = cY; y < pH; y += s) { c.moveTo(0, Math.floor(y) + 0.5); c.lineTo(pW, Math.floor(y) + 0.5); }
-    for (let y = cY - s; y > 0; y -= s) { c.moveTo(0, Math.floor(y) + 0.5); c.lineTo(pW, Math.floor(y) + 0.5); }
-    c.strokeStyle = `rgba(100, 100, 100, ${opacity})`; c.stroke();
+    // --- PASS 1: THE SQUARES (SUBTLE GRAY) ---
+    // Using a light gray at a reduced opacity for a professional look
+    c.strokeStyle = `rgba(136, 136, 136, ${opacity * 0.5})`; 
+    c.lineWidth = 1; 
+    c.beginPath();
+    
+    // Draw vertical lines
+    for (let x = cX; x <= pW; x += s) { c.moveTo(Math.floor(x) + 0.5, 0); c.lineTo(Math.floor(x) + 0.5, pH); }
+    for (let x = cX - s; x >= 0; x -= s) { c.moveTo(Math.floor(x) + 0.5, 0); c.lineTo(Math.floor(x) + 0.5, pH); }
 
-    c.beginPath(); c.moveTo(cX, 0); c.lineTo(cX, pH); c.moveTo(0, cY); c.lineTo(pW, cY);
-    c.strokeStyle = accent; c.lineWidth = 2; c.globalAlpha = opacity; c.stroke();
+    // Draw horizontal lines
+    for (let y = cY; y <= pH; y += s) { c.moveTo(0, Math.floor(y) + 0.5); c.lineTo(pW, Math.floor(y) + 0.5); }
+    for (let y = cY - s; y >= 0; y -= s) { c.moveTo(0, Math.floor(y) + 0.5); c.lineTo(pW, Math.floor(y) + 0.5); }
+    c.stroke();
+
+    // --- PASS 2: THE CENTER CROSSHAIR (MINT) ---
+    c.strokeStyle = accent; 
+    c.lineWidth = 2; // Thicker as requested
+    c.globalAlpha = opacity;
+    c.beginPath();
+    
+    // Vertical center
+    c.moveTo(cX, 0); c.lineTo(cX, pH);
+    // Horizontal center
+    c.moveTo(0, cY); c.lineTo(pW, cY);
+    
+    c.stroke();
     c.restore();
 }
 
@@ -401,7 +423,16 @@ export function drawSelectionHandles(c, s) {
         drawHandleCircle(c, h2x, h2y, userSettings.accentColor);
         
         let cx = s.cp ? s.cp.x : (s.x + s.ex) / 2; let cy = s.cp ? s.cp.y : (s.y + s.ey) / 2;
-        if (s.curveMode) { c.beginPath(); c.rect(cx - 5, cy - 5, 10, 10); c.fillStyle = '#ffcc00'; c.fill(); c.strokeStyle = '#000'; c.lineWidth = 1; c.stroke(); } 
+        if (s.curveMode) { 
+    c.beginPath(); 
+    c.rect(cx - 5, cy - 5, 10, 10); 
+    c.fillStyle = '#ffcc00'; 
+    c.fill(); 
+    
+    c.strokeStyle = '#888888';
+    c.lineWidth = 1;          
+    c.stroke(); 
+}
         else drawHandleCircle(c, cx, cy, userSettings.accentColor);
         return;
     }
@@ -415,10 +446,20 @@ export function drawSelectionHandles(c, s) {
     const halfW = s.w / 2; const halfH = s.h / 2; const handleY = (s.h > 0 ? -halfH : halfH) - ROTATION_HANDLE_OFFSET;
 
     if (s.type !== 'stamp' && s.type !== 'pen') {
-        c.beginPath(); c.moveTo(0, (s.h > 0 ? -halfH : halfH)); c.lineTo(0, handleY);
-        c.strokeStyle = userSettings.accentColor; c.lineWidth = 1; c.setLineDash([]); c.stroke();
-        drawHandleCircle(c, 0, handleY, userSettings.accentColor);
-    }
+    c.beginPath(); 
+    // This draws the line from the top of the shape to the rotation handle
+    c.moveTo(0, (s.h > 0 ? -halfH : halfH)); 
+    c.lineTo(0, handleY);
+    
+    // THE FIX: Change from accentColor or black to subtle gray
+    c.strokeStyle = '#888888'; 
+    c.lineWidth = 1; // Thinned to 1px to match the handles
+    c.setLineDash([]); 
+    c.stroke();
+    
+    // Then the handle itself is drawn
+    drawHandleCircle(c, 0, handleY, '#888888'); 
+}
 
     drawHandleCircle(c, -halfW, -halfH, userSettings.accentColor); drawHandleCircle(c, halfW, -halfH, userSettings.accentColor);
     drawHandleCircle(c, halfW, halfH, userSettings.accentColor); drawHandleCircle(c, -halfW, halfH, userSettings.accentColor);
@@ -436,13 +477,38 @@ export function drawSelectionHandles(c, s) {
 }
 
 export function drawHandleCircle(c, x, y, color) { 
-    c.beginPath(); c.setLineDash([]); c.shadowColor = 'rgba(0,0,0,0.3)'; c.shadowBlur = 3; c.shadowOffsetX = 0; c.shadowOffsetY = 0;
-    c.arc(x, y, 5, 0, Math.PI * 2); c.fillStyle = '#ffffff'; c.fill(); c.strokeStyle = color; c.lineWidth = 1.5; c.stroke(); 
+    c.beginPath(); 
+    c.setLineDash([]); 
+    c.shadowColor = 'rgba(0,0,0,0.15)'; // Subtler shadow
+    c.shadowBlur = 3; 
+    c.shadowOffsetX = 0; 
+    c.shadowOffsetY = 0;
+    c.arc(x, y, 5, 0, Math.PI * 2); 
+    c.fillStyle = '#ffffff'; 
+    c.fill(); 
+    
+    // THE FIX: Consistent subtle gray outline
+    c.strokeStyle = '#888888'; 
+    c.lineWidth = 1; 
+    c.stroke(); 
 }
 
 export function drawHandleSquare(c, x, y) { 
-    c.beginPath(); c.setLineDash([]); c.shadowColor = 'rgba(0,0,0,0.3)'; c.shadowBlur = 3; c.shadowOffsetX = 0; c.shadowOffsetY = 0;
-    const s = 10; c.rect(x - s/2, y - s/2, s, s); c.fillStyle = '#ffffff'; c.fill(); c.strokeStyle = userSettings.accentColor; c.lineWidth = 1.5; c.stroke(); 
+    c.beginPath(); 
+    c.setLineDash([]); 
+    c.shadowColor = 'rgba(0,0,0,0.15)'; // Subtler shadow
+    c.shadowBlur = 3; 
+    c.shadowOffsetX = 0; 
+    c.shadowOffsetY = 0;
+    const s = 10; 
+    c.rect(x - s/2, y - s/2, s, s); 
+    c.fillStyle = '#ffffff'; 
+    c.fill(); 
+    
+    // THE FIX: Deep gray + thinner 1px line for high-DPI
+    c.strokeStyle = '#888888'; 
+    c.lineWidth = 1; 
+    c.stroke(); 
 }
 
 export function applyShadow(ctx, on) { 
