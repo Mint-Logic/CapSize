@@ -1398,7 +1398,7 @@ function applySettingsToRuntime() {
     angleSnapRad = (userSettings.angleSnap * Math.PI) / 180;
     
     const gridEl = document.getElementById('grid');
-    if (gridEl) gridEl.style.backgroundImage = 'none'; 
+    if (gridEl) gridEl.style.backgroundImage = 'none';
     
     window.electronAPI.send('set-always-on-top', userSettings.alwaysOnTop);
     window.electronAPI.send('update-setting', { key: 'openAtLogin', value: userSettings.openAtLogin });
@@ -1418,22 +1418,35 @@ function applySettingsToRuntime() {
     if (typeof loadCustomFonts === 'function') loadCustomFonts();
     updateSwatches();
 
+    // --- CURSOR LOGIC ---
     if(typeof tool !== 'undefined' && tool !== 'cursor') {
         const cDot = document.getElementById('cursor-dot');
-        if(cDot) {
-            if(userSettings.cursorStyle === 'crosshair') { 
-                document.getElementById('frame').style.cursor = 'crosshair'; 
-                cDot.style.display = 'none'; 
-            } else if (userSettings.cursorStyle === 'outline') { 
-                document.getElementById('frame').style.cursor = 'none'; 
-                cDot.style.border = '1px solid #000'; 
-                cDot.style.background = 'transparent'; 
-            } else { 
-                document.getElementById('frame').style.cursor = 'none'; 
-                cDot.style.border = 'none'; 
-                cDot.style.backgroundColor = (typeof colorPk !== 'undefined' ? colorPk.value : '#2e69a3'); 
+        const frameEl = document.getElementById('frame');
+        
+        if(cDot && frameEl) {
+            if(userSettings.cursorStyle === 'crosshair') {
+                frameEl.style.cursor = 'crosshair';
+                cDot.style.display = 'none';
+            } else if (userSettings.cursorStyle === 'outline') {
+                // ENFORCED: Brush Outline Mode
+                frameEl.style.cursor = 'none';
+                cDot.style.display = 'block';
+                cDot.style.border = '1px solid #888888'; // Custom subtle gray border
+                cDot.style.background = 'transparent';
+                cDot.style.boxShadow = 'none';
+            } else {
+                // Standard Dot Mode
+                frameEl.style.cursor = 'none';
+                cDot.style.display = 'block';
+                cDot.style.border = 'none';
+                cDot.style.backgroundColor = (typeof colorPk !== 'undefined' ? colorPk.value : '#2e69a3');
             }
         }
+    }
+
+    if (sizeSl) {
+        sizeSl.value = userSettings.defLineWidth;
+        if (fbSizeSl) fbSizeSl.value = userSettings.defLineWidth;
     }
     
     if(typeof renderMain === 'function') renderMain();
