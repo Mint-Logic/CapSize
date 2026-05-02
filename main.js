@@ -18,6 +18,7 @@ const fs = require('fs');
 const os = require('os');
 const { machineIdSync } = require('node-machine-id');
 
+
 // EMERGENCY OS CAPTURE: Bypasses GPU isolation completely
 const getEmergencyPrimaryScreenshot = () => {
     return new Promise((resolve) => {
@@ -32,10 +33,6 @@ const getEmergencyPrimaryScreenshot = () => {
     });
 };
 
-
-
-// FIX: Prevent HDR color washing/darkening on laptop panels
-app.commandLine.appendSwitch('force-color-profile', 'srgb');
 
 // [NEW] Load WGC Sidecar with Explicit Path
 let wgc = null;
@@ -425,7 +422,7 @@ async function performInstantCapture() {
                 mainWindow.setPosition(d.bounds.x + 50, d.bounds.y + 50); // DPI-safe teleport
                 mainWindow.setOpacity(0); 
                 mainWindow.show(); // Show MUST come first
-                mainWindow.setFullScreen(true);
+                mainWindow.setBounds(d.bounds); // <-- FAKES THE FULLSCREEN
                 mainWindow.focus();
                 mainWindow.webContents.send('wgc-data-received', base64);
             }
@@ -476,6 +473,14 @@ ipcMain.on('resize-window', () => { currentSessionMode = 'window'; });
         mainWindow.loadFile('index.html');
         mainWindow.on('maximize', () => mainWindow.webContents.send('window-state-change', 'maximized'));
         mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-state-change', 'unmaximize'));
+
+        // Safely intercept Ctrl+Shift+I OR F12 only when CapSize is actively focused
+        mainWindow.webContents.on('before-input-event', (event, input) => {
+            if ((input.control && input.shift && input.key.toLowerCase() === 'i') || input.key === 'F12') {
+                event.preventDefault();
+                mainWindow.webContents.openDevTools({mode: 'detach'});
+            }
+        });
     }
 
     app.on('web-contents-created', (e, contents) => {
@@ -893,13 +898,13 @@ const jumpDisplay = async (direction) => {
 
             if (base64) {
                 mainWindow.setOpacity(0);
-mainWindow.show(); // Show MUST come first
-mainWindow.setFullScreen(true);
+                mainWindow.show(); // Show MUST come first
+                mainWindow.setBounds(next.bounds); // <-- FAKES THE FULLSCREEN
                 mainWindow.focus();
                 mainWindow.webContents.send('wgc-data-received', base64);
             } else {
                 mainWindow.webContents.send('scrub-workspace');
-                mainWindow.setFullScreen(true);
+                mainWindow.setBounds(next.bounds); // <-- FAKES THE FULLSCREEN
                 mainWindow.show();
                 mainWindow.setOpacity(1);
             }
@@ -970,7 +975,7 @@ ipcMain.handle('start-fullscreen-capture', async () => {
             if (mainWindow.isMaximized()) mainWindow.unmaximize();
             mainWindow.setOpacity(0); 
             mainWindow.show(); // Show MUST come first
-            mainWindow.setFullScreen(true);
+            mainWindow.setBounds(d.bounds); // <-- FAKES THE FULLSCREEN
             mainWindow.focus();
             return base64;
         }
