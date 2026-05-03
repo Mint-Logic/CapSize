@@ -46,7 +46,7 @@ export const defaultSettings = {
     dottedStyle: 'round',
     snapToGrid: false,
     gridSize: 20,
-    gridOpacity: 0.2,
+    gridOpacity: 0.3,
     showSmartGuides: true,
     magnetStrength: 'medium',
     angleSnap: 15,

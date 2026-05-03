@@ -248,7 +248,7 @@ function drawGrid(c) {
     
     const scale = dpr; 
     const s = (parseInt(userSettings.gridSize) || 20) * scale;
-    const opacity = userSettings.gridOpacity || 0.6;
+    const opacity = userSettings.gridOpacity || 0.3;
     const accent = userSettings.accentColor || '#8CFA96'; // Mint
     
     const pW = c.canvas.width;
@@ -257,8 +257,8 @@ function drawGrid(c) {
     const cY = Math.round(pH / 2);
 
     // --- PASS 1: THE SQUARES (SUBTLE GRAY) ---
-    // Using a light gray at a reduced opacity for a professional look
-    c.strokeStyle = `rgba(136, 136, 136, ${opacity * 0.5})`; 
+    // Removed the * 0.5 handicap so 100% visibility actually means 100%
+    c.strokeStyle = `rgba(150, 150, 150, ${opacity})`; 
     c.lineWidth = 1; 
     c.beginPath();
     
