@@ -392,9 +392,44 @@ c.globalAlpha = s.type === 'eraser-stroke' ? 1 : (s.opacity || 1);
         c.fillText(s.text, cx, textY);
     }
     else if (s.type === 'blur') {
-        c.save(); c.beginPath(); c.rect(s.x, s.y, s.w, s.h); c.clip(); c.filter = 'blur(25px)';
-        c.drawImage(backgroundCanvas, s.x * dpr, s.y * dpr, s.w * dpr, s.h * dpr, s.x, s.y, s.w, s.h);
-        c.filter = 'none'; c.restore();
+        const rX = s.w < 0 ? s.x + s.w : s.x;
+        const rY = s.h < 0 ? s.y + s.h : s.y;
+        const rW = Math.abs(s.w);
+        const rH = Math.abs(s.h);
+        const pad = 30;
+
+        const sc = scratchCtx;
+        const cv = scratchCanvas;
+
+        sc.save();
+        sc.setTransform(1, 0, 0, 1, 0, 0);
+        sc.clearRect(0, 0, cv.width, cv.height);
+        sc.scale(dpr, dpr);
+
+        // 1. Draw the fully blurred oversized background
+        sc.filter = 'blur(25px)';
+        sc.drawImage(
+            backgroundCanvas,
+            (rX - pad) * dpr, (rY - pad) * dpr, (rW + pad * 2) * dpr, (rH + pad * 2) * dpr,
+            rX - pad, rY - pad, rW + pad * 2, rH + pad * 2
+        );
+        sc.filter = 'none';
+
+        // 2. Cut it out with a MICRO-feathered mask
+        sc.globalCompositeOperation = 'destination-in';
+        sc.shadowColor = 'black';
+        sc.shadowBlur = 4; // TIGHTENED: Just enough to soften the digital edge
+        sc.fillStyle = 'black';
+        
+        // TIGHTENED: Pushed the solid mask almost entirely to the edge
+        sc.fillRect(rX + 1, rY + 1, rW - 2, rH - 2); 
+        sc.restore();
+
+        // 3. Stamp the perfectly blended result back onto the main canvas
+        c.save();
+        c.scale(1/dpr, 1/dpr);
+        c.drawImage(cv, 0, 0);
+        c.restore();
 
         if (s === activeShape || (s === selectedShape && isDown)) {
             const hazardOrange = 'rgba(255, 165, 0, 0.8)';
