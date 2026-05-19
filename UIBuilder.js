@@ -30,37 +30,100 @@ export function injectDynamicUI(AppFeatures, userSettings) {
 }
 
 export function injectLateStyles(AppFeatures, userSettings) {
-    // --- 1. TACTICAL UI ---
+    // --- 1. TACTICAL UI (UNIFIED MASTER STYLES) ---
     setTimeout(() => {
         const oldStyle = document.getElementById('tactical-ui-style');
         if (oldStyle) oldStyle.remove();
         const tacticalUIStyle = document.createElement('style');
         tacticalUIStyle.id = 'tactical-ui-style';
         tacticalUIStyle.innerHTML = `
-        .header, .footer, #floating-bar { background: linear-gradient(180deg, rgba(12, 14, 16, 0.82), rgba(0, 0, 0, 0.92)) !important; backdrop-filter: blur(20px) saturate(120%) !important; -webkit-backdrop-filter: blur(20px) saturate(120%) !important; border: 1px solid rgba(255, 255, 255, 0.04) !important; border-top: 1px solid rgba(255, 255, 255, 0.15) !important; border-radius: 8px !important; box-sizing: border-box !important; }
+     
+        /* CORE CHASSIS & BACKGROUNDS */
+        /* HEADER & FOOTER (Darker, since they sit over the empty window background) */
+        .header, .footer { background: repeating-linear-gradient(
+            0deg,
+            rgba(255, 255, 255, 0.09) 0px,
+            rgba(255, 255, 255, 0.09) 1px,
+            transparent 1.5px,
+            transparent 3px
+        ), rgba(12, 14, 16, 0.9) !important; backdrop-filter: blur(20px) saturate(120%) !important; -webkit-backdrop-filter: blur(20px) saturate(120%) !important; border: 1px solid rgba(255, 255, 255, 0.04) !important; border-top: 1px solid rgba(255, 255, 255, 0.15) !important; border-radius: 8px !important; box-sizing: border-box !important; }
+
+        /* BRANDING & LOGO SHADOWS (Object-Fit Bug Fix) */
+        .app-logo, .fb-brand-container img, .about-logo { 
+    /* Changed to a massive Hot Pink drop-shadow to test visibility */
+    filter: drop-shadow(3px 3px 3px #000000) !important; 
+}
+        
+        /* Keep the text shadow for the "CapSize" title and Edition Label */
+        .header .title, .fb-brand-container .brand-font { text-shadow: 3px 3px 3px rgba(0, 0, 0, 1), -1px -1px 0px rgba(255, 255, 255, 0.1) !important; }
+        .edition-label { box-shadow: 3px 3px 3px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; text-shadow: 2px 2px 2px rgba(0, 0, 0, 1) !important; }
+
+        /* FLOATING BAR (Lighter, so you can actually see the canvas through it) */
+        #floating-bar { background: repeating-linear-gradient(
+            0deg,
+            rgba(255, 255, 255, 0.09) 0px,
+            rgba(255, 255, 255, 0.09) 1px,
+            transparent 1.5px,
+            transparent 3px
+        ), rgba(12, 14, 16, 0.5) !important; backdrop-filter: blur(0px) saturate(120%) brightness(0.18) !important; -webkit-backdrop-filter: blur(20px) saturate(120%) brightness(0.4) !important; border: 1px solid rgba(255, 255, 255, 0.04) !important; border-top: 1px solid rgba(255, 255, 255, 0.15) !important; border-radius: 8px !important; box-sizing: border-box !important; }
         .header, .footer { position: fixed !important; left: 2px !important; right: 2px !important; width: auto !important; display: flex !important; align-items: center !important; padding: 0 15px !important; z-index: 99999 !important; }
         .header { top: 2px !important; height: 42px !important; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important; }
         .footer { bottom: 2px !important; height: 42px !important; box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important; }
         .footer .settings { margin-left: auto !important; display: flex !important; gap: 7px !important; align-items: center !important; }
         .header .window-controls { margin-left: auto !important; display: flex !important; gap: 7px !important; }
         .tool-group { display: flex !important; align-items: center !important; gap: 7px !important; }
+        
+        /* FLOATING BAR SPECIFICS */
+        #floating-bar { padding: 4px 14px !important; position: fixed !important; bottom: 60px; z-index: 100000 !important; box-shadow: 0 6px 15px rgba(0, 0, 0, 0.40), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important; -webkit-app-region: no-drag !important; cursor: grab; transition: opacity 0.2s; }
+        
+        /* FRAME BOUNDARIES (PREVENTS GIANT SCREEN BUG) */
         #frame { outline-offset: -2px !important; }
         #frame:not([style*="position: absolute"]) { margin-top: 48px !important; margin-bottom: 48px !important; }
-        #floating-bar { padding: 4px 14px !important; position: fixed !important; bottom: 60px; left: 50%; transform: translateX(-50%); width: auto !important; z-index: 100000 !important; box-shadow: 0 6px 15px rgba(0, 0, 0, 0.40), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important; }
         #window-resize-grip, .footer .divider { display: none !important; }
-        .dropdown-content, .ctx-menu, .color-popup, #hotkey-cheat-sheet { background: linear-gradient(180deg, rgba(12, 14, 16, 0.82), rgba(0, 0, 0, 0.95)) !important; backdrop-filter: blur(20px) saturate(120%) !important; -webkit-backdrop-filter: blur(20px) saturate(120%) !important; border: 1px solid rgba(255, 255, 255, 0.04) !important; border-top: 1px solid rgba(255, 255, 255, 0.15) !important; border-radius: 8px !important; box-shadow: 0 10px 30px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.1) !important; display: flex !important; padding: 8px !important; opacity: 0 !important; visibility: hidden !important; transform: translateY(12px) scale(0.95) !important; pointer-events: none !important; transition: opacity 0.2s, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), visibility 0.2s !important; }
+
+        /* MENUS & POPUPS */
+        .dropdown-content, .ctx-menu, .color-popup, #hotkey-cheat-sheet { background: repeating-linear-gradient(
+
+            0deg,
+
+            rgba(255, 255, 255, 0.09) 0px,
+
+            rgba(255, 255, 255, 0.09) 1px,
+
+            transparent 1.5px,
+
+            transparent 3px
+
+        ), rgba(12, 14, 16, 0.9) !important; backdrop-filter: blur(20px) saturate(120%) !important; -webkit-backdrop-filter: blur(20px) saturate(120%) !important; border: 1px solid rgba(255, 255, 255, 0.04) !important; border-top: 1px solid rgba(255, 255, 255, 0.15) !important; border-radius: 8px !important; box-sizing: border-box !important;  box-shadow: 0 10px 30px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.1) !important; display: flex !important; padding: 8px !important; opacity: 0 !important; visibility: hidden !important; transform: translateY(12px) scale(0.95) !important; pointer-events: none !important; transition: opacity 0.2s, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), visibility 0.2s !important; }
         .dropdown-content, .ctx-menu { flex-direction: column !important; gap: 6px !important; }
         .color-popup { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 4px !important; width: fit-content !important; }
         .dropdown-content.show, .ctx-menu.show, .color-popup:not(.hidden) { opacity: 1 !important; visibility: visible !important; transform: translateY(0) scale(1) !important; pointer-events: auto !important; }
-        .swatch, .btn-rgb, #color-trigger, #fb-color-trigger { border: 1px solid rgba(255, 255, 255, 0.12) !important; border-top: 1px solid rgba(255, 255, 255, 0.3) !important; border-radius: 6px !important; box-shadow: 0 4px 8px rgba(0,0,0,0.6) !important; transition: all 0.15s ease !important; min-width: 24px; min-height: 24px; }
-        .swatch:hover, .btn-rgb:hover, #color-trigger:hover, #fb-color-trigger:hover { border-color: var(--accent) !important; transform: scale(1.08) translateY(-1px) !important; box-shadow: 0 5px 10px rgba(0,0,0,0.7), 0 0 6px rgba(140, 250, 150, 0.3) !important; z-index: 10; }
+
+        /* COLORS & BUTTON ANIMATIONS */
+        .btn-snap { background: #252628 !important; box-shadow: 4px 4px 4px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
+        .btn-snap:hover { background: #252628 !important; box-shadow: 0 0 10px rgba(140, 250, 150, 0.2), 4px 4px 4px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
+        .btn-snap:active { background: #252628 !important; box-shadow: 1px 1px 1px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; transform: translateY(1px) !important; }
+        .swatch, .btn-rgb, #color-trigger, #fb-color-trigger { border: 1px solid rgba(0, 0, 0, 0.8) !important;  border-radius: 4px !important; box-shadow: inset 1.5px 1.5px 2px rgba(255, 255, 255, 0.6), inset -1.5px -1.5px 3px rgba(0, 0, 0, 0.7), 2px 2px 2px rgba(0, 0, 0, 0.8), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; transition: all 0.15s ease !important; min-width: 24px; min-height: 24px; }
+        .swatch:hover, .btn-rgb:hover, #color-trigger:hover, #fb-color-trigger:hover { transform: scale(1.02) translateY(-1px) !important; box-shadow: 0 0 8px rgba(140, 250, 150, 0.4), inset 1.5px 1.5px 2px rgba(255, 255, 255, 0.6), inset -1.5px -1.5px 3px rgba(0, 0, 0, 0.6), 2px 2px 2px rgba(0, 0, 0, 0.8), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; z-index: 10; }
+        .swatch:active, .btn-rgb:active, #color-trigger:active, #fb-color-trigger:active { transform: scale(0.99) translateY(1px) !important; box-shadow: inset 1.5px 1.5px 2px rgba(255, 255, 255, 0.4), inset -1.5px -1.5px 3px rgba(0, 0, 0, 0.5) !important; }
         .color-popup input[type="text"] { background: rgba(0, 0, 0, 0.4) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important; border-radius: 4px !important; color: #fff !important; box-shadow: inset 0 2px 5px rgba(0,0,0,0.6) !important; padding: 2px 6px !important; text-align: center !important; }
-        #btn-apply { transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important; transform-origin: center !important; }
-        #btn-apply:hover { transform: scale(1.12) translateY(-1px) !important; color: var(--accent) !important; filter: drop-shadow(0 2px 4px rgba(140, 250, 150, 0.3)) !important; z-index: 10; }
-        #btn-apply:active { transition: all 0.05s ease-in !important; transform: scale(0.92) translateY(1px) !important; filter: drop-shadow(0 0 2px rgba(140, 250, 150, 0.15)) !important; }
-        .drop-content { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--accent) !important; font-family: 'Orbitron', sans-serif; text-shadow: 0 0 15px rgba(140, 250, 150, 0.5); }
-        .glowing-lock { margin-bottom: 20px; animation: lockBreathe 2.5s infinite ease-in-out; }
-        @keyframes lockBreathe { 0% { filter: drop-shadow(0 0 3px rgba(140, 250, 150, 0)); transform: scale(1); } 50% { filter: drop-shadow(0 0 9px rgba(140, 250, 150, 0)); transform: scale(1.05); } 100% { filter: drop-shadow(0 0 3px rgba(140, 250, 150, 0)); transform: scale(1); } }
+       #btn-apply { box-shadow: none !important; border: none !important; background: transparent !important; filter: drop-shadow(4px 4px 4px rgba(0, 0, 0, 1)) drop-shadow(-0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1)) !important; transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important; transform-origin: center !important; }
+        #btn-apply:hover { transform: scale(1.12) translateY(-1px) !important; color: var(--accent) !important; filter: drop-shadow(0 0 8px rgba(140, 250, 150, 0.6)) drop-shadow(4px 4px 4px rgba(0, 0, 0, 1)) drop-shadow(-0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1)) !important; z-index: 10; }
+        #btn-apply:active { transition: all 0.05s ease-in !important; transform: scale(0.92) translateY(1px) !important; filter: drop-shadow(0 0 2px rgba(140, 250, 150, 0.3)) drop-shadow(1px 1px 1px rgba(0, 0, 0, 1)) drop-shadow(-0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1)) !important; }
+
+        /* SLIDER THUMBS & SIZE DOT SHADOWS */
+        .size-dot { box-shadow: 4px 4px 4px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
+        input[type="range"]::-webkit-slider-thumb { box-shadow: 0 0 5px var(--accent), 0 0 10px var(--accent), 4px 4px 4px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
+        input[type="range"]:hover::-webkit-slider-thumb { box-shadow: 0 0 8px var(--accent), 0 0 15px var(--accent), 4px 4px 4px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
+
+        /* DRAG GRIP SHADOW */
+        .drag-grip::after { box-shadow: 0 0 12px rgba(140, 250, 150, 1.0), 0 0 25px rgba(140, 250, 150, 0.5), 4px 4px 4px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
+
+        /* NUMBER INPUT BAR */
+        .dims { background: #252628 !important; border: 1px solid rgba(185, 185, 185, 0.8) !important; box-shadow: 
+        inset 4px 4px 4px rgba(0, 0, 0, 0.8), 
+                inset -0.5px -0.5px 1px rgba(255, 255, 255, 0.05); !important;
+         }
         `;
         document.head.appendChild(tacticalUIStyle);
     }, 150);
@@ -105,31 +168,53 @@ export function injectLateStyles(AppFeatures, userSettings) {
     // --- 4. INDEPENDENT ICON STYLES ---
     const stdIconStyle = document.createElement('style');
     stdIconStyle.innerHTML = `
-        .footer .tool-btn, .footer .style-btn, .footer .dropdown-item, #floating-bar .tool-btn, #floating-bar .style-btn, #floating-bar .dropdown-item { width: 26px !important; height: 26px !important; padding: 3px !important; margin: 0 !important; border-radius: 4px !important; background: transparent !important; border: 1px solid rgba(255, 255, 255, 0.5) !important; box-shadow: none !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; transition: border-color 0.1s ease, box-shadow 0.1s ease !important; overflow: hidden !important; }
+        .footer .tool-btn, .footer .style-btn, .footer .dropdown-item, #floating-bar .tool-btn, #floating-bar .style-btn, #floating-bar .dropdown-item { width: 26px !important; height: 26px !important; padding: 3px !important; margin: 0 !important; border-radius: 4px !important; background: #252628 !important; border: 1px solid rgba(255, 255, 255, 0.5) !important; box-shadow: 4px 4px 4px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; transition: border-color 0.1s ease, box-shadow 0.1s ease !important; overflow: hidden !important; }
         .footer .dropdown-content, #floating-bar .dropdown-content { min-width: 44px !important; width: 44px !important; align-items: center !important; box-sizing: border-box !important; padding: 4px 0 !important; }
         .dropdown-content .dropdown-item { margin: 4px 0 !important; }
         .footer, .footer .tool-group, .footer .fb-section, .footer .settings, #floating-bar, #floating-bar .tool-group, #floating-bar .fb-section, #floating-bar .settings { gap: 7px !important; }
         .footer .dropdown, #floating-bar .dropdown { display: flex !important; align-items: center !important; justify-content: center !important; margin: 0 !important; padding: 0 !important; }
-        .footer .tool-btn .icon-img, #floating-bar .tool-btn .icon-img, .footer .dropdown-item .icon-img, #floating-bar .dropdown-item .icon-img { width: 16px !important; height: 16px !important; object-fit: contain !important; transform: none !important; box-shadow: none !important; }
-        .footer .tool-btn .icon-img, #floating-bar .tool-btn .icon-img, .footer .dropdown-item .icon-img, #floating-bar .dropdown-item .icon-img { filter: invert(0.8) !important; }
-        .footer .tool-btn:not(.active):hover, #floating-bar .tool-btn:not(.active):hover, .footer .dropdown-item:not(.active-tool):hover, #floating-bar .dropdown-item:not(.active-tool):hover { background: transparent !important; border-color: rgba(255, 255, 255, 0.8) !important; box-shadow: 0 0 10px rgba(255, 255, 255, 0.6) !important; }
+        .footer .tool-btn .icon-img, #floating-bar .tool-btn .icon-img, .footer .dropdown-item .icon-img, #floating-bar .dropdown-item .icon-img { width: 16px !important; height: 16px !important; object-fit: contain !important; transform: none !important;  filter: invert(0.8) !important; }
+        .footer .tool-btn:not(.active):hover, #floating-bar .tool-btn:not(.active):hover, .footer .dropdown-item:not(.active-tool):hover, #floating-bar .dropdown-item:not(.active-tool):hover, .footer .style-btn:not(.active):hover, #floating-bar .style-btn:not(.active):hover { background: #252628 !important; border-color: rgba(255, 255, 255, 0.8) !important; box-shadow: 0 0 10px rgba(255, 255, 255, 0.6), 4px 4px 4px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; color: white !important; }
         .footer .tool-btn:not(.active):hover .icon-img, #floating-bar .tool-btn:not(.active):hover .icon-img, .footer .dropdown-item:not(.active-tool):hover .icon-img, #floating-bar .dropdown-item:not(.active-tool):hover .icon-img { filter: invert(1) brightness(2) !important; transform: none !important; }
-        .footer .tool-btn.active, #floating-bar .tool-btn.active, .footer .dropdown-item.active-tool, #floating-bar .dropdown-item.active-tool { background: transparent !important; border-color: var(--accent) !important; box-shadow: 0 0 10px rgba(140, 250, 150, 0.6) !important; }
+        .footer .tool-btn.active, #floating-bar .tool-btn.active, .footer .dropdown-item.active-tool, #floating-bar .dropdown-item.active-tool { background: #252628 !important; border-color: var(--accent) !important; box-shadow: 0 0 10px rgba(140, 250, 150, 0.6), 2px 2px 2px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; transform: translateY(1.5px) !important;}
         .footer .tool-btn.active .icon-img, #floating-bar .tool-btn.active .icon-img, .footer .dropdown-item.active-tool .icon-img, #floating-bar .dropdown-item.active-tool .icon-img { transform: translateY(-100px) !important; filter: drop-shadow(0 100px 0 var(--accent)) !important; }
-        .footer .custom-font-btn, #floating-bar .custom-font-btn { width: 78px !important; justify-content: space-between !important; padding: 0 8px !important; }
-        .custom-font-btn .font-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; pointer-events: none; }
+        .footer .custom-font-btn, #floating-bar .custom-font-btn { width: 78px !important; justify-content: space-between !important; padding: 0 4px 0 4px !important; !important; box-shadow: inset 4px 4px 4px rgba(0, 0, 0, 0.9), 
+                inset -1px -1px 2px rgba(255, 255, 255, 0.05) !important;
+                line-height: 0.9 !important;
+                 text-shadow: 2px 2px 2px rgba(0, 0, 0, 1), 
+                 -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.12);  }
+        .footer .custom-font-btn:hover, #floating-bar .custom-font-btn:hover { 
+            background: #252628 !important; 
+            border-color: var(--accent) !important; 
+           box-shadow: inset 4px 4px 4px rgba(0, 0, 0, 0.9), 
+                inset -1px -1px 2px rgba(255, 255, 255, 0.05) !important;} 
+            transform: none !important; 
+        }
+        .custom-font-btn .font-label { 
+    display: block !important; 
+    white-space: normal !important; 
+    font-size: 11px !important;     
+    text-align: left !important;
+    overflow: hidden !important;
+    pointer-events: none; 
+    margin-top: 1px !important;
+       
+        /* THE FIX: An unbreakable width. It literally cannot touch the chevron now. */
+    width: 52px !important; 
+    min-width: 52px !important;
+}
         .custom-font-btn i { font-size: 10px; opacity: 0.5; pointer-events: none; margin-left: 4px; }
         .footer .dropdown-content.font-menu, #floating-bar .dropdown-content.font-menu { width: 180px !important; min-width: 180px !important; max-height: 250px !important; overflow-y: auto !important; padding: 4px !important; align-items: stretch !important; }
         .font-menu::-webkit-scrollbar { width: 6px; } .font-menu::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; } .font-menu::-webkit-scrollbar-thumb:hover { background: var(--accent); }
         .font-optgroup { font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; padding: 6px 8px 2px 8px; font-weight: bold; pointer-events: none; }
         .footer .dropdown-content .dropdown-item.font-option, #floating-bar .dropdown-content .dropdown-item.font-option { width: 100% !important; height: auto !important; min-height: 28px !important; padding: 6px 10px !important; justify-content: flex-start !important; border: 1px solid transparent !important; border-radius: 4px !important; font-size: 14px !important; margin: 2px 0 !important; }
-        .footer .dropdown-content .dropdown-item.font-option:hover, #floating-bar .dropdown-content .dropdown-item.font-option:hover { background-color: #444 !important; box-shadow: none !important; border-color: transparent !important; }
+        .footer .dropdown-content .dropdown-item.font-option:hover, #floating-bar .dropdown-content .dropdown-item.font-option:hover { background-color: #252628 !important; box-shadow: none !important; border-color: transparent !important; }
     `;
     document.head.appendChild(stdIconStyle);
 
     const sysIconStyle = document.createElement('style');
     sysIconStyle.innerHTML = `
-        .btn-icon { padding: 3px !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 26px !important; height: 26px !important; border-radius: 4px !important; transition: all 0.2s ease !important; background: transparent !important; border: 1px solid rgba(185, 185, 185, 0.8) !important; margin: 0 !important; }
+        .btn-icon, .window-controls .btn-icon { padding: 3px !important; display: flex !important; align-items: center !important; justify-content: center !important; width: 26px !important; height: 26px !important; border-radius: 4px !important; transition: all 0.2s ease !important; background: #252628 !important; border: 1px solid rgba(185, 185, 185, 0.8) !important; margin: 0 !important; box-shadow: 4px 4px 4px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
         #floating-bar #fb-max, #floating-bar #fb-reset { border: 1px solid rgba(185, 185, 185, 0.8) !important; }
         .footer .divider, .footer .fb-divider, #floating-bar .fb-divider { height: 32px !important; margin: 0 6px !important; }
         #floating-bar .fb-divider { height: 26px !important; margin: 0 6px !important; }
@@ -139,11 +224,15 @@ export function injectLateStyles(AppFeatures, userSettings) {
         #btn-help .colored-icon, #btn-min .colored-icon, #btn-close .colored-icon { transform: none !important; }
         #btn-save, #fb-save, #btn-save-close, #fb-save-close, #btn-drag, #fb-drag, #btn-del, #fb-del, #btn-help, #fb-settings, #btn-quit, #fb-quit, #btn-center, #fb-pos-reset, #fb-monitor-jump, #btn-fullscreen, #fb-exit, #btn-min, #btn-close { color: #B9B9B9 !important; }
         #btn-save:hover, #fb-save:hover, #btn-save-close:hover, #fb-save-close:hover, #btn-drag:hover, #fb-drag:hover, #btn-del:hover, #fb-del:hover, #btn-help:hover, #fb-settings:hover, #btn-center:hover, #fb-pos-reset:hover, #fb-monitor-jump:hover, #btn-fullscreen:hover, #fb-exit:hover, #btn-min:hover, #btn-close:hover, #btn-quit:hover, #fb-quit:hover, #fb-max:hover, #fb-reset:hover { background: #121417 !important; border: 1px solid currentColor !important; transform: scale(1.05) !important; }
-        #btn-save:hover, #fb-save:hover, #btn-fullscreen:hover, #fb-exit:hover { color: #00FF66 !important; box-shadow: 0 0 10px rgba(0, 255, 102, 0.6) !important; }
-        #btn-save-close:hover, #fb-save-close:hover, #btn-min:hover { color: #FFD700 !important; box-shadow: 0 0 10px rgba(255, 215, 0, 0.6) !important; }
-        #btn-drag:hover, #fb-drag:hover { color: #00E5FF !important; box-shadow: 0 0 10px rgba(0, 229, 255, 0.6) !important; }
-        #btn-del:hover, #fb-del:hover, #btn-quit:hover, #fb-quit:hover, #btn-close:hover { color: #FF3333 !important; box-shadow: 0 0 10px rgba(255, 51, 51, 0.6) !important; }
-        #btn-help:hover, #fb-settings:hover, #fb-max:hover, #fb-reset:hover, #btn-center:hover, #fb-pos-reset:hover, #fb-monitor-jump:hover { color: #FFFFFF !important; box-shadow: 0 0 10px rgba(255, 255, 255, 0.6) !important; }
+
+       /* PERMANENT GLOW + MACHINED SHADOW FOR SPECIAL BUTTONS */
+       #btn-fullscreen, #fb-exit { background: #252628 !important; box-shadow: 0 0 10px rgba(140, 250, 150, 0.5), inset 0 0 5px rgba(140, 250, 150, 0.2), 4px 4px 4px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
+        #btn-drag, #fb-drag { box-shadow: 0 0 12px rgba(0, 188, 212, 0.6), 3px 3px 3px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
+        #btn-save:hover, #fb-save:hover, #btn-fullscreen:hover, #fb-exit:hover { color: #00FF66 !important; box-shadow: 0 0 10px rgba(0, 255, 102, 0.6), 3px 3px 3px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
+        #btn-save-close:hover, #fb-save-close:hover, #btn-min:hover { color: #FFD700 !important; box-shadow: 0 0 10px rgba(255, 215, 0, 0.6), 3px 3px 3px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
+        #btn-drag:hover, #fb-drag:hover { color: #00E5FF !important; box-shadow: 0 0 10px rgba(0, 229, 255, 0.6), 3px 3px 3px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
+        #btn-del:hover, #fb-del:hover, #btn-quit:hover, #fb-quit:hover, #btn-close:hover { color: #FF3333 !important; box-shadow: 0 0 10px rgba(255, 51, 51, 0.6), 3px 3px 3px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
+        #btn-help:hover, #fb-settings:hover, #fb-max:hover, #fb-reset:hover, #btn-center:hover, #fb-pos-reset:hover, #fb-monitor-jump:hover { color: #FFFFFF !important; box-shadow: 0 0 10px rgba(255, 255, 255, 0.6), 3px 3px 3px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
     `;
     document.head.appendChild(sysIconStyle);
 

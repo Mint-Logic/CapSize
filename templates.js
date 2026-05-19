@@ -566,12 +566,7 @@ input:checked + .slider:before {
         /* GENERAL UI IMPROVEMENTS */
         .tool-btn, .btn-icon, .style-btn, .stamp-control-btn { transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important; }
         .tool-btn:active, .btn-icon:active, .style-btn:active, .stamp-control-btn:active { transform: scale(0.92) !important; }
-        #floating-bar { 
-            background: repeating-linear-gradient(45deg, #0B0C0E, #0B0C0E 10px, #0E1012 10px, #0E1012 20px) !important; 
-            backdrop-filter: none !important;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.8), 0 0 20px rgba(140, 250, 150, 0.15) !important; 
-            border: .7px solid rgba(140, 250, 150, 0.6) !important; 
-        }
+       
         .custom-tooltip { position: fixed; background: #1e1e1e; color: var(--accent); border: 1px solid var(--accent); padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; font-family: 'Segoe UI', sans-serif; pointer-events: none; z-index: 100000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); opacity: 0; transform: translateY(5px); transition: opacity 0.15s, transform 0.15s; white-space: nowrap; }
         .custom-tooltip.visible { opacity: 1; transform: translateY(0); }
         
@@ -1444,11 +1439,11 @@ input:checked + .slider:before {
                             <div class="g-grid">
                                 ${features.type === 'pro' ? `
                                 <div class="g-item">
-                                    <strong><i class="fa-regular fa-square"></i> Shapes</strong>
-                                    <span style="color:var(--accent);">Right-Click</span> the Star/Polygon tool to change shape types.
-                                    <br><span style="color:var(--accent);">Double-Click</span> any shape tool to toggle Solid Fill.
-                                    <br><span style="color:var(--accent);">Radius:</span> When drawing a square, use the floating bubble slider to adjust corner roundness.
-                                </div>
+    <strong><i class="fa-regular fa-square"></i> Shapes</strong>
+    <span style="color:var(--accent);">Right-Click</span> the Star/Polygon tool to change shape types.
+    <br><span style="color:var(--accent);">Double-Click</span> any shape tool to toggle Solid Fill.
+    <br><span style="color:var(--accent);">Polygons:</span> Click to place points. Click your starting point again (or get near it) to close the shape.
+</div>
                                 ` : `
                                 <div class="g-item">
                                     <strong><i class="fa-regular fa-square"></i> Shapes</strong>
@@ -1457,11 +1452,12 @@ input:checked + .slider:before {
                                 `}
                                 
                                 <div class="g-item">
-                                    <strong><i class="fa-solid fa-font"></i> Text</strong>
-                                    Click to type. Drag the small <span style="color:var(--accent);">Mint Handle</span> to move the text box.
-                                    <br><span style="color:var(--accent);">Fix:</span> Right-click red underlined text to correct spelling.
-                                    <br><span style="color:var(--accent);">Edit:</span> Double-click existing text on canvas to modify it.
-                                </div>
+    <strong><i class="fa-solid fa-font"></i> Text & Fonts</strong>
+    Click to type. Drag the <span style="color:var(--accent);">Mint Handle</span> to move the box. <span style="color:var(--accent);">Double-click</span> text to edit it.
+    ${features.type === 'pro' ? `
+    <br><span style="color:var(--accent);">Font Library:</span> Open the Font menu to pin favorites. Click <span style="font-weight: bold; color: #fff;">Import TTF</span> in Appearance settings to load custom fonts.` : `
+    <br><span style="color:var(--accent);">Fix:</span> Right-click red underlined text to correct spelling.`}
+</div>
                                 <div class="g-item">
                                     <strong><i class="fa-solid fa-eraser"></i> Eraser Modes</strong>
                                     <span style="color:var(--accent);">Double-Click</span> the eraser to switch between "Brush Eraser" (pixels) and "Object Eraser" (deletes entire shapes).
@@ -1473,6 +1469,12 @@ input:checked + .slider:before {
                         <div class="setting-group">
                             <div class="st-title">Stroke & Context</div>
                             <div class="g-grid">
+                            <div class="g-item">
+    <strong><i class="fa-solid fa-palette"></i> Color Management</strong>
+    Click any color swatch to use it. 
+    <br><span style="color:var(--accent);">Set Default:</span> <span style="color:var(--accent);">Right-Click</span> any swatch (or the main Color Picker button) to set it as your permanent startup color.
+</div>
+
                                 <div class="g-item">
                                     <strong><i class="fa-solid fa-ellipsis"></i> Dotted & Shadows</strong>
                                     Use the persistent <i class="fa-solid fa-ellipsis"></i> and <i class="fa-solid fa-layer-group"></i> toggle buttons next to the grid to apply styles to future shapes or modify selected ones.
@@ -1547,20 +1549,22 @@ input:checked + .slider:before {
                             </div>
                         </div>
                         <div class="setting-group">
-                            <div class="st-title">Style Presets</div>
-                            <div class="g-grid">
-                                <div class="g-item">
-                                    <strong>Saving a Style</strong>
-                                    Setup your perfect tool (Color + Size + Opacity). Open the Color Picker. 
-                                    <span style="color:var(--accent);">Right-Click</span> any of the small numbered slots to save.
-                                </div>
-                                <div class="g-item">
-                                    <strong>Loading a Style</strong>
-                                    Press <span class="k-badge">Ctrl</span> + <span class="k-badge">1</span> through <span class="k-badge">9</span> while drawing to instantly switch to that preset.
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+    <div class="st-title">Style Presets</div>
+    <div class="g-grid">
+        <div class="g-item">
+            <strong>Saving & Clearing</strong>
+            Setup your perfect tool (Color + Size + Opacity). Open the Color Picker. 
+            <span style="color:var(--accent);">Right-Click</span> a numbered slot to save it.
+            <br><br>Hold <span style="color:var(--accent);">Shift + Right-Click</span> to clear an existing slot.
+        </div>
+        <div class="g-item">
+            <strong>Loading a Style</strong>
+            Press <span class="k-badge">Ctrl</span> + <span class="k-badge">1</span> through <span class="k-badge">9</span> while drawing to instantly switch to that preset.
+            <br><br>Alternatively, <span style="color:var(--accent);">Left-Click</span> any saved slot in the Color Picker menu.
+        </div>
+    </div>
+</div>
+              </div>      
                     ` : ''}
                     
                     <div id="guide-hotkeys" class="tab-pane">
@@ -1984,6 +1988,6 @@ body.immersive-active #radius-bubble {
         
         /* 3. Logo & Layout Compensation */
         .logo-area { margin-right: 15px !important; gap: 7px !important; flex-shrink: 0 !important; min-width: fit-content !important; }
-        .app-logo { margin-left: -4px !important; }
+        .app-logo { margin-left: -4px !important;  }
     `
 };

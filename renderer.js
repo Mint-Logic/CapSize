@@ -2103,16 +2103,71 @@ const toggleHighlighterMode = (e) => {
 function renderPresets() {
     const containers = [document.getElementById('color-popup'), document.getElementById('fb-color-popup')];
     const limit = AppFeatures.stylePresetsCount || 1;
+    
+    // --- NEW: YIQ Contrast Calculator ---
+    const getContrastText = (hex) => {
+        if (!hex) return { color: '#555', shadow: '1px 1px 2px rgba(0,0,0,0.8)' }; // Empty slot
+        let cleanHex = hex.replace('#', '');
+        if (cleanHex.length === 3) cleanHex = cleanHex.split('').map(c => c + c).join('');
+        
+        const r = parseInt(cleanHex.substr(0, 2), 16);
+        const g = parseInt(cleanHex.substr(2, 2), 16);
+        const b = parseInt(cleanHex.substr(4, 2), 16);
+        
+        // YIQ equation for perceived brightness
+        const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+        
+        // If > 128 it's a light color, use dark text with no shadow. Otherwise, white text + dark shadow.
+        return yiq >= 128 
+            ? { color: '#111111', shadow: 'none' } 
+            : { color: 'rgba(255,255,255,0.9)', shadow: '1px 1px 2px rgba(0,0,0,0.8)' };
+    };
+
     containers.forEach(parent => {
         if (!parent) return;
         parent.querySelectorAll('.preset-container-wrapper').forEach(el => el.remove());
-        const wrapper = document.createElement('div'); wrapper.className = 'preset-container-wrapper'; wrapper.style.cssText = "grid-column: 1 / -1; border-top: 1px solid #444; margin-top: 8px; padding-top: 8px; width: 100%;";
-        const grid = document.createElement('div'); grid.style.cssText = `display: grid; grid-template-columns: repeat(${limit}, 1fr); gap: 2px;`;
+        
+        const wrapper = document.createElement('div'); 
+        wrapper.className = 'preset-container-wrapper'; 
+        wrapper.style.cssText = "grid-column: 1 / -1; border-top: 1px solid #444; margin-top: 8px; padding-top: 8px; width: 100%;";
+        
+        const grid = document.createElement('div'); 
+        grid.style.cssText = `display: grid; grid-template-columns: repeat(${limit}, 1fr); gap: 2px;`;
+        
         for (let i = 0; i < limit; i++) {
-            const preset = userSettings.stylePresets[i]; const slot = document.createElement('div');
-            slot.style.cssText = `height: 18px; border-radius: 3px; cursor: pointer; background-color: ${preset ? preset.color : '#333'}; border: ${preset ? '1px solid rgba(255,255,255,0.3)' : '1px solid #444'}; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: ${preset ? 'rgba(255,255,255,0.8)' : '#666'}; transition: transform 0.1s;`;
+            const preset = userSettings.stylePresets[i]; 
+            const slot = document.createElement('div');
+            
+            // --- NEW: Apply the contrast calculation ---
+            const textStyle = getContrastText(preset ? preset.color : null);
+            
+            slot.style.cssText = `
+                height: 18px; 
+                border-radius: 3px; 
+                cursor: pointer; 
+                background-color: ${preset ? preset.color : '#121314'}; 
+                border: 1px solid rgba(0, 0, 0, 0.8); 
+                box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.7), inset -1px -1px 2px rgba(255, 255, 255, 0.05);
+                display: flex; 
+                align-items: center; 
+                justify-content: center; 
+                font-size: 10px; 
+                font-weight: bold; 
+                color: ${textStyle.color}; 
+                text-shadow: ${textStyle.shadow};
+                transition: all 0.15s ease;
+            `;
             slot.innerText = i + 1;
-            slot.onmouseenter = () => { slot.style.transform = 'scale(1.1)'; slot.style.zIndex = '10'; }; slot.onmouseleave = () => { slot.style.transform = 'scale(1)'; slot.style.zIndex = '1'; };
+            
+            slot.onmouseenter = () => { 
+                slot.style.borderColor = preset ? 'var(--accent)' : '#888';
+                slot.style.filter = 'brightness(1.2)';
+            }; 
+            slot.onmouseleave = () => { 
+                slot.style.borderColor = 'rgba(0, 0, 0, 0.8)';
+                slot.style.filter = 'none';
+            };
+            
             slot.onclick = (e) => {
                 e.stopPropagation(); e.preventDefault();
                 if (preset) {
@@ -2123,10 +2178,33 @@ function renderPresets() {
                     updateStyle(); showToast(`Loaded Style ${i + 1}`);
                 } else { showToast(`Slot ${i + 1} is empty`); }
             };
+            
+            // --- NEW: Helpful Tooltip ---
+            slot.title = preset 
+                ? "Click to Load\nRight-Click to Overwrite\nShift + Right-Click to Clear" 
+                : "Right-Click to Save Current Style";
+
+            // --- UPDATED: Save OR Clear Logic ---
             slot.oncontextmenu = (e) => {
                 e.preventDefault(); e.stopPropagation();
-                userSettings.stylePresets[i] = { color: colorPk.value, width: parseFloat(sizeSl.value), opacity: parseFloat(opacitySl.value) };
-                if (typeof saveSettings === 'function') saveSettings(); renderPresets(); showToast(`Saved to Slot ${i + 1}`);
+                
+                if (e.shiftKey) {
+                    // Clear the slot if Shift is held
+                    userSettings.stylePresets[i] = null;
+                    if (typeof saveSettings === 'function') saveSettings(); 
+                    renderPresets(); 
+                    showToast(`Cleared Slot ${i + 1}`);
+                } else {
+                    // Standard Save/Overwrite
+                    userSettings.stylePresets[i] = { 
+                        color: colorPk.value, 
+                        width: parseFloat(sizeSl.value), 
+                        opacity: parseFloat(opacitySl.value) 
+                    };
+                    if (typeof saveSettings === 'function') saveSettings(); 
+                    renderPresets(); 
+                    showToast(`Saved to Slot ${i + 1}`);
+                }
             };
             grid.appendChild(slot);
         }
