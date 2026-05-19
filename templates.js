@@ -627,7 +627,7 @@ input:checked + .slider:before {
         }
         
         #floating-bar .color-trigger-btn { width: 20px !important; height: 20px !important; }
-        #floating-bar .size-dot-wrapper { width: 16px !important; height: 16px !important; }
+        #floating-bar .size-dot-wrapper { width: 21px !important; height: 21px !important; }
         #floating-bar .size-dot { width: 100% !important; height: 100% !important; }
     `,
 

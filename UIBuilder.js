@@ -112,12 +112,14 @@ export function injectLateStyles(AppFeatures, userSettings) {
         #btn-apply:active { transition: all 0.05s ease-in !important; transform: scale(0.92) translateY(1px) !important; filter: drop-shadow(0 0 2px rgba(140, 250, 150, 0.3)) drop-shadow(1px 1px 1px rgba(0, 0, 0, 1)) drop-shadow(-0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1)) !important; }
 
         /* SLIDER THUMBS & SIZE DOT SHADOWS */
-        .size-dot { box-shadow: 4px 4px 4px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
+        .size-dot {  width: 21px !important; height: 21px !important; box-shadow: 
+        inset 2px 2px 2px rgba(0, 0, 0, 0.6), 
+                inset -1px -1px 2px rgba(255, 255, 255, 0.5); !important;}
         input[type="range"]::-webkit-slider-thumb { box-shadow: 0 0 5px var(--accent), 0 0 10px var(--accent), 4px 4px 4px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
         input[type="range"]:hover::-webkit-slider-thumb { box-shadow: 0 0 8px var(--accent), 0 0 15px var(--accent), 4px 4px 4px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
 
         /* DRAG GRIP SHADOW */
-        .drag-grip::after { box-shadow: 0 0 12px rgba(140, 250, 150, 1.0), 0 0 25px rgba(140, 250, 150, 0.5), 4px 4px 4px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
+        .drag-grip::after { box-shadow: 0 0 12px rgba(140, 250, 150, 1.0), 0 0 25px rgba(140, 250, 150, 0.5), 3px 3px 2px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; }
 
         /* NUMBER INPUT BAR */
         .dims { background: #252628 !important; border: 1px solid rgba(185, 185, 185, 0.8) !important; box-shadow: 
@@ -178,7 +180,7 @@ export function injectLateStyles(AppFeatures, userSettings) {
         .footer .tool-btn:not(.active):hover .icon-img, #floating-bar .tool-btn:not(.active):hover .icon-img, .footer .dropdown-item:not(.active-tool):hover .icon-img, #floating-bar .dropdown-item:not(.active-tool):hover .icon-img { filter: invert(1) brightness(2) !important; transform: none !important; }
         .footer .tool-btn.active, #floating-bar .tool-btn.active, .footer .dropdown-item.active-tool, #floating-bar .dropdown-item.active-tool { background: #252628 !important; border-color: var(--accent) !important; box-shadow: 0 0 10px rgba(140, 250, 150, 0.6), 2px 2px 2px rgba(0, 0, 0, 1), -0.5px -0.5px 0.5px rgba(255, 255, 255, 0.1) !important; transform: translateY(1.5px) !important;}
         .footer .tool-btn.active .icon-img, #floating-bar .tool-btn.active .icon-img, .footer .dropdown-item.active-tool .icon-img, #floating-bar .dropdown-item.active-tool .icon-img { transform: translateY(-100px) !important; filter: drop-shadow(0 100px 0 var(--accent)) !important; }
-        .footer .custom-font-btn, #floating-bar .custom-font-btn { width: 78px !important; justify-content: space-between !important; padding: 0 4px 0 4px !important; !important; box-shadow: inset 4px 4px 4px rgba(0, 0, 0, 0.9), 
+        .footer .custom-font-btn, #floating-bar .custom-font-btn { width: 78px !important; justify-content: space-between !important; padding: 0 4px 0 6px !important; !important; box-shadow: inset 4px 4px 4px rgba(0, 0, 0, 0.9), 
                 inset -1px -1px 2px rgba(255, 255, 255, 0.05) !important;
                 line-height: 0.9 !important;
                  text-shadow: 2px 2px 2px rgba(0, 0, 0, 1), 
