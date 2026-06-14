@@ -24,3 +24,4 @@ npm start
 
 # Run the app simulating the pro environment flags
 npm run start:pro
+
