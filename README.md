@@ -25,6 +25,10 @@ npm start
 # Run the app simulating the pro environment flags
 npm run start:pro
 
+Privacy Policy
+CapSize is strictly local-first and zero-telemetry. All canvas manipulations, cropping data, and OCR indexing occur entirely within volatile RAM or your local hard drive.
+npm run start:pro
+
 
 
 
