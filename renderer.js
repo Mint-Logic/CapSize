@@ -774,7 +774,7 @@ function applyGridSnap(val, axis) {
 
 function getHandleAt(p, s) {
     if(!s || s.type === 'polygon_drag' || s.isGroup || s.type === 'eraser-stroke') return 0;
-    const TOUCH_RAD = 30; 
+    const TOUCH_RAD = 3; 
 
     if (s.type === 'stamp') {
          if (s.ex !== undefined) {
