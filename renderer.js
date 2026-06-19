@@ -836,16 +836,43 @@ function hitTest(p) {
             if (p.x >= tx && p.x <= tx + tw && p.y >= s.y && p.y <= s.y + h) return s;
         } 
         else if (['pen', 'polygon'].includes(s.type)) { 
+             // 🟢 EXTRA TIGHT FIX: Outer boundary box cushion reduced to a flat 3px
              const b = MathUtils.getBoundingBox(s); 
-             if (p.x >= b.x - HIT_PAD && p.x <= b.x+b.w + HIT_PAD && p.y >= b.y - HIT_PAD && p.y <= b.y+b.h + HIT_PAD) return s;
-        } 
+             const tightPad = 3; 
+             
+             if (p.x >= b.x - tightPad && p.x <= b.x + b.w + tightPad && 
+                 p.y >= b.y - tightPad && p.y <= b.y + b.h + tightPad) {
+                 
+                 // Look through the actual path coordinates
+                 if (s.points && s.points.length > 0) {
+                     // Dropped distance check from a minimum of 8px down to a strict 4px
+                     const maxDistance = Math.max(4, s.width * 1.1); 
+                     
+                     for (let i = 0; i < s.points.length; i++) {
+                         const ptX = s.x !== undefined ? s.x + s.points[i].x : s.points[i].x;
+                         const ptY = s.y !== undefined ? s.y + s.points[i].y : s.points[i].y;
+                         
+                         if (Math.hypot(p.x - ptX, p.y - ptY) < maxDistance) {
+                             return s; 
+                         }
+                     }
+                 } else {
+                     return s;
+                 }
+             }
+        }
         else if (['line', 'arrow'].includes(s.type)) {
-             const hitThreshold = Math.max(HIT_PAD, s.width * 1.5);
+             // 🟢 EXTRA TIGHT FIX: Dropped padding from 6px down to 3px
+             const linePadding = 3; 
+             const hitThreshold = Math.max(linePadding, s.width * 1.05); // Tighter brush scaling factor
+             
              if (s.cp) {
                  if (MathUtils.pointToCurveDist(p, s.x, s.y, s.cp, s.ex, s.ey) < hitThreshold) return s;
                  if (Math.hypot(p.x - s.cp.x, p.y - s.cp.y) < hitThreshold) return s;
-             } else { if (MathUtils.pointToLineDist(p, {x:s.x, y:s.y}, {x:s.ex, y:s.ey}) < hitThreshold) return s; }
-        } 
+             } else { 
+                 if (MathUtils.pointToLineDist(p, {x:s.x, y:s.y}, {x:s.ex, y:s.ey}) < hitThreshold) return s; 
+             }
+        }
         else if (s.type === 'stamp') {
              const radius = s.w/2; const cx = s.x + radius; const cy = s.y + radius;
              if (Math.hypot(p.x - cx, p.y - cy) < radius) return s;
