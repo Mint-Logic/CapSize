@@ -1,7 +1,7 @@
 {
   "name": "capsize",
   "productName": "CapSize",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A screen capturing and annotating tool",
   "main": "main.js",
   "scripts": {

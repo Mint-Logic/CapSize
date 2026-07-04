@@ -303,6 +303,46 @@ ipcMain.on('validate-license', async (event, filePath) => {
         tray.on('click', () => toggleWindow());
     }
 
+function getStartupWindowBounds() {
+    let startW = 840;
+    let startH = 340;
+
+    if (fs.existsSync(CONFIG_FILE)) {
+        try {
+            const configData = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+            startW = configData.startupW || 840;
+            startH = configData.startupH || 340;
+        } catch (e) { console.error(e); }
+    }
+
+    const contentW = Math.max(parseInt(startW, 10) || 840, 975);
+    const contentH = Math.max(parseInt(startH, 10) || 340, 170);
+    const windowW = contentW + 120;
+    const windowH = contentH + 98;
+
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()) || screen.getPrimaryDisplay();
+    const workArea = display.workArea;
+    const x = Math.round(workArea.x + (workArea.width - windowW) / 2);
+    const y = Math.round(workArea.y + (workArea.height - windowH) / 2);
+
+    return { x, y, width: windowW, height: windowH };
+}
+
+function applyNormalWindowBounds() {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+
+    try {
+        if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+        if (mainWindow.isMaximized()) mainWindow.unmaximize();
+        mainWindow.setMaximizable(false);
+
+        const bounds = getStartupWindowBounds();
+        mainWindow.setBounds(bounds);
+    } catch (e) {
+        console.error('Failed to apply normal window bounds:', e);
+    }
+}
+
 function toggleWindow() {
     if (!mainWindow) return;
     const now = Date.now();
@@ -322,19 +362,7 @@ function toggleWindow() {
             performInstantCapture();
         } else {
             // Otherwise, show the standard windowed mode
-            let startW = 840;
-            let startH = 340;
-
-            if (fs.existsSync(CONFIG_FILE)) {
-                try {
-                    const configData = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
-                    startW = configData.startupW || 840;
-                    startH = configData.startupH || 340;
-                } catch (e) { console.error(e); }
-            }
-            
-            mainWindow.setSize(startW + 120, startH + 110);
-            mainWindow.center(); 
+            applyNormalWindowBounds();
             mainWindow.setOpacity(1);
             mainWindow.show();
             mainWindow.focus();
@@ -448,20 +476,16 @@ ipcMain.on('force-maximize', () => { currentSessionMode = 'fs'; });
 ipcMain.on('resize-window', () => { currentSessionMode = 'window'; });
 
     function createWindow() {
-        const mousePoint = screen.getCursorScreenPoint();
-        const display = screen.getDisplayNearestPoint(mousePoint);
-        const STARTUP_W = 1200;
-        const STARTUP_H = 700; 
-        const x = Math.floor(display.bounds.x + (display.bounds.width / 2) - (STARTUP_W / 2));
-        const y = Math.floor(display.bounds.y + (display.bounds.height / 2) - (STARTUP_H / 2));
+        const startupBounds = getStartupWindowBounds();
 
         mainWindow = new BrowserWindow({
-            width: STARTUP_W, height: STARTUP_H, 
-            minWidth: 975, // Increased to match new UI floor
+            width: startupBounds.width, height: startupBounds.height,
+            minWidth: 975,
             minHeight: 170,
-            x: x, y: y,
+            x: startupBounds.x, y: startupBounds.y,
             frame: false, transparent: true, backgroundColor: '#00000000', alwaysOnTop: true,
             resizable: true, show: false,
+            maximizable: false, // <-- THE FIX: Lock out OS Maximize on boot
             title: IS_PRO_BUILD ? 'CapSize' : 'CapSize Core',
             icon: getIcon(),
             webPreferences: {
@@ -471,6 +495,14 @@ ipcMain.on('resize-window', () => { currentSessionMode = 'window'; });
         });
         
         mainWindow.loadFile('index.html');
+        mainWindow.once('ready-to-show', () => {
+            if (!process.argv.includes('--hidden')) {
+                applyNormalWindowBounds();
+                mainWindow.show();
+                mainWindow.setOpacity(1);
+                mainWindow.focus();
+            }
+        });
         mainWindow.on('maximize', () => mainWindow.webContents.send('window-state-change', 'maximized'));
         mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-state-change', 'unmaximize'));
 
@@ -552,7 +584,12 @@ ipcMain.on('resize-window', () => { currentSessionMode = 'window'; });
 
     ipcMain.on('renderer-ready-to-show', () => {
         if (!mainWindow) return;
-        if (!process.argv.includes('--hidden')) { mainWindow.show(); mainWindow.setOpacity(1); mainWindow.focus(); }
+        if (!process.argv.includes('--hidden')) {
+            applyNormalWindowBounds();
+            mainWindow.show();
+            mainWindow.setOpacity(1);
+            mainWindow.focus();
+        }
     });
 
     // --- HANDLERS ---
@@ -835,25 +872,94 @@ ipcMain.on('clipboard-write-text', (event, text) => {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(currentConfig, null, 2));
 });
 
-    ipcMain.on('resize-window', (e, { width, height }) => { 
-        if (mainWindow) { 
-            if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
-            if (mainWindow.isMaximized()) mainWindow.unmaximize(); 
-            
-            // Fallback to safe numbers if the incoming data is NaN/undefined
-            const safeW = parseInt(width) || 975; // Updated fallback
-            const safeH = parseInt(height) || 170;
+    // 1. STANDARD RESIZE
+    ipcMain.on('resize-window', (e, { width, height }) => {
+        if (!mainWindow) return;
 
-            mainWindow.setBounds({ width: Math.max(safeW, 975), height: Math.max(safeH, 170) }); 
-        } 
+        currentSessionMode = 'window';
+        if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+        if (mainWindow.isMaximized()) mainWindow.unmaximize();
+
+        mainWindow.setMaximizable(false);
+
+        const safeW = Math.max(parseInt(width) || 975, 975);
+        const safeH = Math.max(parseInt(height) || 170, 170);
+        mainWindow.setBounds({ width: safeW, height: safeH });
     });
-    ipcMain.on('maximize-app', () => { if (mainWindow) mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize(); });
-    ipcMain.on('force-maximize', () => { if (mainWindow && !mainWindow.isMaximized()) mainWindow.maximize(); });
+
+    // 2. ANCHORED RESIZE
+    ipcMain.on('resize-anchored', (e, { width, height }) => {
+        if (!mainWindow) return;
+
+        currentSessionMode = 'window';
+        if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+        if (mainWindow.isMaximized()) mainWindow.unmaximize();
+
+        mainWindow.setMaximizable(false);
+
+        const safeW = Math.max(parseInt(width) || 975, 975);
+        const safeH = Math.max(parseInt(height) || 170, 170);
+        const bounds = mainWindow.getBounds();
+
+        mainWindow.setBounds({ x: bounds.x, y: bounds.y, width: safeW, height: safeH });
+    });
+
+    // 3. WINDOW STATE HANDLERS
+    ipcMain.on('maximize-app', () => {
+        if (!mainWindow) return;
+        mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
+    });
+
+    ipcMain.on('force-maximize', () => {
+        currentSessionMode = 'fs';
+        if (mainWindow) {
+            if (mainWindow.isMaximized()) mainWindow.unmaximize();
+            mainWindow.setMaximizable(false);
+        }
+    });
+
     ipcMain.on('minimize-app', () => { if (mainWindow) mainWindow.minimize(); });
     ipcMain.on('close-app', () => { if (mainWindow) { mainWindow.webContents.send('scrub-workspace'); mainWindow.hide(); } });
     ipcMain.on('quit-app', () => { app.isQuitting = true; app.quit(); });
     ipcMain.on('set-always-on-top', (e, f) => { if(mainWindow) mainWindow.setAlwaysOnTop(f, 'screen-saver'); });
-    ipcMain.on('center-window', () => { if (mainWindow) mainWindow.center(); });
+
+    ipcMain.on('center-window', () => {
+        if (!mainWindow) return;
+
+        currentSessionMode = 'window';
+        if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+        if (mainWindow.isMaximized()) mainWindow.unmaximize();
+        mainWindow.setMaximizable(false);
+        mainWindow.center();
+    });
+
+    ipcMain.on('restore-window-size', (e, { width, height }) => {
+        if (!mainWindow) return;
+
+        currentSessionMode = 'window';
+        if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+        if (mainWindow.isMaximized()) mainWindow.unmaximize();
+        mainWindow.setMaximizable(false);
+
+        const safeW = Math.max(parseInt(width) || 975, 975);
+        const safeH = Math.max(parseInt(height) || 170, 170);
+        const bounds = mainWindow.getBounds();
+        const display = screen.getDisplayMatching(bounds) || screen.getPrimaryDisplay();
+        const workArea = display.workArea;
+        const x = Math.round(workArea.x + (workArea.width - safeW) / 2);
+        const y = Math.round(workArea.y + (workArea.height - safeH) / 2);
+
+        setTimeout(() => {
+            if (!mainWindow) return;
+            if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+            if (mainWindow.isMaximized()) mainWindow.unmaximize();
+            mainWindow.setMaximizable(false);
+            mainWindow.setBounds({ x, y, width: safeW, height: safeH });
+            mainWindow.show();
+            mainWindow.focus();
+        }, 25);
+    });
+
     ipcMain.on('set-window-opacity', (e, o) => { if(mainWindow) mainWindow.setOpacity(o); });
     
 // Generalized Jump Function

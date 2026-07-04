@@ -955,7 +955,7 @@ input:checked + .slider:before {
         <span class="edition-label" style="position: absolute !important; left: 100% !important; top: 0 !important; margin-left: 4px !important; transform: none !important;">${features.type === 'core' ? 'CORE' : 'PRO'}</span>
     </span>
 </div>
-                            <div class="about-ver">Version 1.0.0</div>
+                            <div class="about-ver">Version 1.0.1</div>
 
                             <div class="guide-btn-group" style="margin: 8px 0; display:flex; flex-direction:column; gap:10px; align-items:center;">
         

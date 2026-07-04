@@ -165,7 +165,12 @@ let preWizardW = 0, preWizardH = 0;
 let w = userSettings.startupW;
 let h = userSettings.startupH;
 let dpr = window.devicePixelRatio || 1;
+let ignoreInitialResize = true;
 const requiredW = Math.max(userSettings.startupW + UI_W_OFFSET, 1000);
+
+setTimeout(() => {
+    ignoreInitialResize = false;
+}, 250);
 
 // =====================================================================
 // CHAPTER 4: CORE RENDER ENGINE
@@ -1270,6 +1275,26 @@ function exitFullscreen() {
     winResizeGrip.style.display = 'flex'; 
     
     resetFramePosition();
+}
+
+function restoreWindowAfterFullscreen() {
+    isSuppressingResize = true;
+
+    const targetW = Math.max(parseInt(userSettings.startupW || w || 840, 10), 50);
+    const targetH = Math.max(parseInt(userSettings.startupH || h || 340, 10), 50);
+
+    w = targetW;
+    h = targetH;
+
+    if (inpW) inpW.value = w;
+    if (inpH) inpH.value = h;
+
+    updateCanvasSize(w, h, true);
+    window.electronAPI.send('restore-window-size', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
+
+    setTimeout(() => {
+        isSuppressingResize = false;
+    }, 100);
 }
 
 function updateCanvasSize(newW, newH, keepPosition = false) {
@@ -2476,6 +2501,11 @@ function loadExternalImage(blob) {
 
 let resizeTimer;
 window.addEventListener('resize', () => { 
+    if (ignoreInitialResize) {
+        ignoreInitialResize = false;
+        return;
+    }
+
     let newW = window.innerWidth - 120; 
     let newH = window.innerHeight - 110; 
     
@@ -2532,17 +2562,33 @@ winResizeGrip.onpointerdown = (e) => {
     winResizeGrip.onpointerup = (ev) => { winResizeGrip.releasePointerCapture(ev.pointerId); winResizeGrip.onpointermove = null; winResizeGrip.onpointerup = null; }; 
 };
 
-const applyDimensions = () => { 
+const applyDimensions = (overrideW = null, overrideH = null) => { 
     if (isFullscreen) return; 
-    let reqW = parseInt(inpW.value); let reqH = parseInt(inpH.value); 
-    if(isNaN(reqW) || reqW < 50) reqW = 50; if(isNaN(reqH) || reqH < 50) reqH = 50; 
+
+    const rawW = (overrideW !== null && overrideW !== undefined && typeof overrideW !== 'object')
+        ? overrideW
+        : (inpW ? inpW.value : '');
+    const rawH = (overrideH !== null && overrideH !== undefined && typeof overrideH !== 'object')
+        ? overrideH
+        : (inpH ? inpH.value : '');
+
+    let reqW = parseInt(rawW, 10); 
+    let reqH = parseInt(rawH, 10); 
+    if(isNaN(reqW) || reqW < 50) reqW = 50; 
+    if(isNaN(reqH) || reqH < 50) reqH = 50; 
+
+    if (inpW) inpW.value = reqW;
+    if (inpH) inpH.value = reqH;
     
-    let winW = reqW + UI_W_OFFSET; 
-    let winH = reqH + UI_H_OFFSET; 
+    const winW = reqW + UI_W_OFFSET; 
+    const winH = reqH + UI_H_OFFSET; 
     
     isSuppressingResize = true;
     updateCanvasSize(reqW, reqH);
-    window.electronAPI.send('resize-window', { width: winW, height: winH }); 
+    
+    // Call our new perfectly anchored resize!
+    window.electronAPI.send('resize-anchored', { width: winW, height: winH }); 
+    
     setTimeout(() => {
         isSuppressingResize = false;
     }, 100);
@@ -2567,74 +2613,44 @@ btnFullscreen.onclick = async () => {
         frameEl.classList.add('clean-slate');
     }
     document.body.classList.add('fullscreen');
-    if (typeof doDelete === 'function') doDelete(); 
-    window.electronAPI.send('force-maximize'); 
+    if (typeof doDelete === 'function') doDelete();
     await enterFullscreenMode(); 
 };
 
+// [FIXED] Enforce User Default Canvas Size (No Hard Stop on Canvas)
 btnCenter.onclick = () => { 
-    isSuppressingResize = true;
-    exitFullscreen();
-    hasSnappedInFullscreen = false;
-    
-    w = userSettings.startupW;
-    h = userSettings.startupH;
-    
-    if (inpW) inpW.value = w;
-    if (inpH) inpH.value = h;
+    exitFullscreen(); 
+    hasSnappedInFullscreen = false; 
+    restoreWindowAfterFullscreen();
+};
 
-    resetFramePosition();
-    
-    window.electronAPI.send('resize-window', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
-    window.electronAPI.send('center-window');
-    
-    setTimeout(() => { 
-        updateCanvasSize(w, h);
-        isSuppressingResize = false;
-    }, 50); 
+
+// RESET SELECTION BUTTON
+document.getElementById('fb-reset').onclick = () => {
+    doDelete(); 
+    if(isFullscreen) {
+        frame.style.display = 'none';
+        inpW.value = 0; inpH.value = 0;
+    }
 };
 
 const exitBtn = document.getElementById('fb-exit');
 if (exitBtn) {
     exitBtn.addEventListener('click', () => {
         isWGCFrozen = false;
-        isFullscreen = false;
-        isSuppressingResize = true; 
-        
+        exitFullscreen();
+        frame.classList.remove('clean-slate', 'immersive-active'); 
+        if (typeof winResizeGrip !== 'undefined' && winResizeGrip) {
+            winResizeGrip.style.display = 'flex'; 
+        }
+
         const backdrop = document.getElementById('backdrop-img');
         if (backdrop) {
             backdrop.src = "";
             backdrop.style.display = 'none';
         }
 
-        document.body.classList.remove('fullscreen');
-        if (floatingBar) floatingBar.classList.add('hidden'); // Guarantee the bar hides
-
-        w = userSettings.startupW || 840;
-        h = userSettings.startupH || 340;
-        
-        if (inpW) inpW.value = w;
-        if (inpH) inpH.value = h;
-
-        const targetW = w + UI_W_OFFSET;
-        const targetH = h + UI_H_OFFSET;
-        window.electronAPI.send('resize-window', { width: targetW, height: targetH });
-        window.electronAPI.send('center-window');
-        
-        // [THE FIX] Thoroughly cleanse the frame of fullscreen modifications
-        frame.style.display = 'block';
-        frame.classList.remove('clean-slate', 'immersive-active'); 
-        frame.style.outline = `2px dashed ${userSettings.accentColor || '#8CFA96'}`; 
-        if (typeof winResizeGrip !== 'undefined' && winResizeGrip) {
-            winResizeGrip.style.display = 'flex'; 
-        }
-        
-        resetFramePosition();
-        
-        updateCanvasSize(w, h, true);
-        setTimeout(() => { 
-            isSuppressingResize = false;
-        }, 100);
+        restoreWindowAfterFullscreen();
     });
 }
 
@@ -2682,8 +2698,7 @@ const toggleSettings = (e) => {
             inpW.value = w; 
             inpH.value = h;
             
-            window.electronAPI.send('resize-window', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
-            window.electronAPI.send('center-window');
+            window.electronAPI.send('restore-window-size', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
             
             updateCanvasSize(w, h);
             
@@ -3022,6 +3037,13 @@ window.addEventListener('keydown', (e) => {
         if (colorPop && !colorPop.classList.contains('hidden')) { colorPop.classList.add('hidden'); return; }
         if (fbColorPop && !fbColorPop.classList.contains('hidden')) { fbColorPop.classList.add('hidden'); return; }
         if (activeTextWrapper) { commitActiveText(); return; }
+        if (isFullscreen) {
+            e.preventDefault();
+            e.stopPropagation();
+            exitFullscreen();
+            restoreWindowAfterFullscreen();
+            return;
+        }
         if (isDown || isCreatingFrame) {
             isDown = false; isCreatingFrame = false;
             if(isFullscreen) { frame.style.display = 'none'; inpW.value = 0; inpH.value = 0; }
@@ -5221,11 +5243,7 @@ if(wizHotkeyInput) {
 if (userSettings.startFullscreen) {
     window.electronAPI.send('set-window-opacity', 0);
     document.body.classList.add('fullscreen');
-    window.electronAPI.send('force-maximize');
-    
-    setTimeout(() => {
-        enterFullscreenMode();
-    }, 100);
+
 }
 
 setTimeout(() => {
@@ -5248,10 +5266,10 @@ setTimeout(() => {
 }, 100);
 
 if (!userSettings.startFullscreen) {
-    isSuppressingResize = true; 
+    isSuppressingResize = true;
     window.electronAPI.send('resize-window', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
     window.electronAPI.send('center-window');
-    setTimeout(() => { initCanvas(); isSuppressingResize = false; }, 100); 
+    setTimeout(() => { initCanvas(); isSuppressingResize = false; }, 100);
 }
 
 // Render Dev UI (If Active)
