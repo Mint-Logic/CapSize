@@ -2506,14 +2506,23 @@ window.addEventListener('resize', () => {
         return;
     }
 
-    let newW = window.innerWidth - 120; 
-    let newH = window.innerHeight - 110; 
+    let newW = window.innerWidth - UI_W_OFFSET; 
+    let newH = window.innerHeight - UI_H_OFFSET; 
     
     newW = Math.floor(newW / 2) * 2;
     newH = Math.floor(newH / 2) * 2;
 
     if (newW < 50) newW = 50; 
     if (newH < 50) newH = 50;
+
+    // THE FIX: The Windows DWM 2px Anti-Creep Shield
+    // If the user isn't dragging the frame, and the shift is 2px or less,
+    // it's just OS border ghosting. Block it!
+    if (!isResizing && !isFullscreen && !isSuppressingResize) {
+        if (Math.abs(newW - w) <= 2 && Math.abs(newH - h) <= 2) {
+            return; 
+        }
+    }
 
     if (typeof measureTip !== 'undefined' && userSettings.showMeasurements && isResizing) {
         const tipX = (window.innerWidth / 2) - 60; 
@@ -2534,21 +2543,20 @@ window.addEventListener('resize', () => {
     if (resizeTimer) clearTimeout(resizeTimer);
     
     resizeTimer = setTimeout(() => {
-    const WINDOW_FLOOR_W = 855; 
-    if (newW <= WINDOW_FLOOR_W && w < newW) {
-         newW = w; 
-    }
-    
-    if (w !== newW || h !== newH) {
-        if(inpW) inpW.value = Math.round(newW);
-        if(inpH) inpH.value = Math.round(newH);
+        const WINDOW_FLOOR_W = 865; 
+        if (newW <= WINDOW_FLOOR_W && w < newW) {
+             newW = w; 
+        }
         
-        updateCanvasSize(newW, newH, true);
-    } else {
-        renderMain();
-    }
-    
-}, 50); 
+        if (w !== newW || h !== newH) {
+            if(inpW) inpW.value = Math.round(newW);
+            if(inpH) inpH.value = Math.round(newH);
+            
+            updateCanvasSize(newW, newH, true);
+        } else {
+            renderMain();
+        }
+    }, 50); 
 });
 
 winResizeGrip.onpointerdown = (e) => { 
@@ -2650,6 +2658,8 @@ if (exitBtn) {
             backdrop.style.display = 'none';
         }
 
+        // Force system mode to drop fullscreen status completely
+        window.electronAPI.send('resize-window', { width: userSettings.startupW + UI_W_OFFSET, height: userSettings.startupH + UI_H_OFFSET });
         restoreWindowAfterFullscreen();
     });
 }
@@ -5549,6 +5559,32 @@ window.electronAPI.on('scrub-workspace', () => {
 // ==========================================
 // WINDOW MODE WAKE-UP HANDLER
 // ==========================================
+
+// Handles precise workspace recovery when returning from the System Tray
+window.electronAPI.on('window-shown-tray-restore', () => {
+    isSuppressingResize = true;
+    
+    // We already have our EXACT custom size in memory (e.g. 730x340)
+    if (inpW) inpW.value = w;
+    if (inpH) inpH.value = h;
+
+    // Reset view constraints cleanly
+    frame.style.display = 'block';
+    frame.classList.remove('clean-slate', 'immersive-active');
+    resetFramePosition();
+    
+    updateCanvasSize(w, h, true);
+    
+    // THE ULTIMATE FIX: Force main process to lock the dimensions and center it.
+    // By using 'restore-window-size', we execute an atomic snap based purely on our internal numbers.
+    window.electronAPI.send('restore-window-size', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
+    
+    setTimeout(() => {
+        isSuppressingResize = false;
+        renderMain();
+    }, 150);
+});
+
 window.electronAPI.on('window-shown', () => {
     const frameEl = document.getElementById('frame');
     

@@ -51,6 +51,10 @@ try {
     }
 }
 
+let lastTrayBounds = null;
+
+let currentSessionMode = null;
+
 // ==========================================
 // 1. IMPORT DEPENDENCIES FIRST
 // ==========================================
@@ -350,38 +354,26 @@ function toggleWindow() {
     lastToggle = now;
 
     if (mainWindow.isVisible()) {
-        if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
         mainWindow.webContents.send('scrub-workspace'); 
         setTimeout(() => mainWindow.hide(), 50); 
     } else {
-        // THE FIX: Check if the user prefers FS Mode before showing the window
-        const startInFS = getInitialMode() === 'fs';
+        if (!currentSessionMode) currentSessionMode = getInitialMode();
 
-        if (startInFS) {
-            // If they want Fullscreen, trigger the capture logic immediately
+        if (currentSessionMode === 'fs') {
             performInstantCapture();
         } else {
-            // Otherwise, show the standard windowed mode
-            applyNormalWindowBounds();
+            if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+            if (mainWindow.isMaximized()) mainWindow.unmaximize();
+            mainWindow.setMaximizable(false);
+
+            // Just wake it up. The renderer will take over sizing immediately.
             mainWindow.setOpacity(1);
             mainWindow.show();
             mainWindow.focus();
-            mainWindow.webContents.send('window-shown');
+
+            mainWindow.webContents.send('window-shown-tray-restore');
         }
     }
-}
-
-let currentSessionMode = null; // Tracks 'window' or 'fs'
-
-// Helper to determine the initial mode based on user settings
-function getInitialMode() {
-    if (fs.existsSync(CONFIG_FILE)) {
-        try {
-            const data = fs.readFileSync(CONFIG_FILE, 'utf-8');
-            return JSON.parse(data).startFullscreen ? 'fs' : 'window';
-        } catch (e) { return 'window'; }
-    }
-    return 'window';
 }
 
 async function performInstantCapture() {
@@ -395,74 +387,20 @@ async function performInstantCapture() {
     if (!currentSessionMode) currentSessionMode = getInitialMode();
 
     if (currentSessionMode === 'fs') {
-        const wasVisible = mainWindow.isVisible();
-
-        if (wasVisible) {
-            mainWindow.webContents.send('scrub-workspace'); 
-            await new Promise(r => setTimeout(r, 50)); 
-            mainWindow.hide();
-            await new Promise(r => setTimeout(r, 150)); 
-        }
-
-        try {
-            const point = screen.getCursorScreenPoint();
-            const d = screen.getDisplayNearestPoint(point);
-            const isPrimary = d.id === screen.getPrimaryDisplay().id;
-            
-            let base64 = null;
-            const displays = screen.getAllDisplays();
-
-            // STRATEGY 1: WGC is 100% safe and lightning-fast on Single Monitors
-            if (displays.length === 1 && wgc) {
-                wgc.captureScreen(point.x, point.y);
-                await new Promise(r => setTimeout(r, 50)); 
-                const rawBuffer = wgc.captureScreen(point.x, point.y);
-                if (rawBuffer && rawBuffer.length > 0) base64 = `data:image/png;base64,${rawBuffer.toString('base64')}`;
-            }
-
-            // STRATEGY 2: Native Electron (Handles Multi-Monitor Scaling seamlessly)
-            if (!base64) {
-                const sources = await desktopCapturer.getSources({ 
-                    types: ['screen'], 
-                    thumbnailSize: { 
-                        width: Math.round(d.size.width * d.scaleFactor), 
-                        height: Math.round(d.size.height * d.scaleFactor) 
-                    } 
-                });
-                
-                let src = sources.find(s => s.display_id === d.id.toString());
-                
-                // THE FIX: Fallback to grab the primary screen reliably if exact ID match fails
-                if (!src && isPrimary) {
-                    src = sources.find(s => s.display_id === '0') || sources[0]; 
-                }
-
-                if (src) {
-                    base64 = src.thumbnail.toDataURL();
-                } else if (isPrimary) {
-                    // STRATEGY 3: Hybrid GPU Bug Detected! Use PowerShell Escape Hatch.
-                    base64 = await getEmergencyPrimaryScreenshot();
-                }
-            }
-
-            if (base64) {
-                if (mainWindow.isMaximized()) mainWindow.unmaximize();
-                mainWindow.setPosition(d.bounds.x + 50, d.bounds.y + 50); // DPI-safe teleport
-                mainWindow.setOpacity(0); 
-                mainWindow.show(); // Show MUST come first
-                mainWindow.setBounds(d.bounds); // <-- FAKES THE FULLSCREEN
-                mainWindow.focus();
-                mainWindow.webContents.send('wgc-data-received', base64);
-            }
-        } catch (e) {
-            console.error("Hotkey FS Capture Error:", e);
-        }
+        // ... (Keep all your existing Fullscreen/WGC capture logic here) ...
     } else {
-        if (mainWindow.isVisible()) {
-            mainWindow.webContents.send('scrub-workspace');
-            setTimeout(() => mainWindow.hide(), 50); 
+        if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+        if (mainWindow.isMaximized()) mainWindow.unmaximize();
+        mainWindow.setMaximizable(false);
+
+        if (currentSessionMode === 'window') {
+            // It was already running, just wake it up
+            mainWindow.setOpacity(1);
+            mainWindow.show();
+            mainWindow.focus();
+            mainWindow.webContents.send('window-shown-tray-restore');
         } else {
-            if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+            applyNormalWindowBounds();
             mainWindow.show();
             mainWindow.focus();
             mainWindow.setOpacity(1);
@@ -472,7 +410,9 @@ async function performInstantCapture() {
 }
 
 // Ensure the mode is updated when the user manually switches modes in the UI
-ipcMain.on('force-maximize', () => { currentSessionMode = 'fs'; });
+ipcMain.on('force-maximize', () => { 
+    currentSessionMode = 'fs'; 
+});
 ipcMain.on('resize-window', () => { currentSessionMode = 'window'; });
 
     function createWindow() {
@@ -603,17 +543,18 @@ ipcMain.on('resize-window', () => { currentSessionMode = 'window'; });
         } catch (e) { return { canceled: true, error: e.message }; }
     });
     
-ipcMain.on('hide-window', () => {
+ipcMain.on('close-app', () => { 
     if (mainWindow) {
-        mainWindow.webContents.send('scrub-workspace');
-        setTimeout(() => mainWindow.hide(), 50);
-    }
+        mainWindow.webContents.send('scrub-workspace'); 
+        mainWindow.hide(); 
+    } 
 });
-ipcMain.on('close-app', () => {
+
+ipcMain.on('hide-window', () => { 
     if (mainWindow) {
-        mainWindow.webContents.send('scrub-workspace');
-        setTimeout(() => mainWindow.hide(), 50);
-    }
+        mainWindow.webContents.send('scrub-workspace'); 
+        mainWindow.hide(); 
+    } 
 });
 
 // Replace your get-wgc-buffer handler
@@ -873,36 +814,34 @@ ipcMain.on('clipboard-write-text', (event, text) => {
 });
 
     // 1. STANDARD RESIZE
-    ipcMain.on('resize-window', (e, { width, height }) => {
-        if (!mainWindow) return;
-
-        currentSessionMode = 'window';
+   ipcMain.on('resize-window', (e, { width, height }) => { 
+    currentSessionMode = 'window'; 
+    if (mainWindow) {
         if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
         if (mainWindow.isMaximized()) mainWindow.unmaximize();
-
         mainWindow.setMaximizable(false);
-
-        const safeW = Math.max(parseInt(width) || 975, 975);
-        const safeH = Math.max(parseInt(height) || 170, 170);
-        mainWindow.setBounds({ width: safeW, height: safeH });
-    });
+        
+        mainWindow.setBounds({ 
+            width: Math.max(parseInt(width), 200),
+            height: Math.max(parseInt(height), 150)
+        });
+    }
+});
 
     // 2. ANCHORED RESIZE
     ipcMain.on('resize-anchored', (e, { width, height }) => {
-        if (!mainWindow) return;
+    if (!mainWindow) return;
+    currentSessionMode = 'window';
+    if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    mainWindow.setMaximizable(false);
 
-        currentSessionMode = 'window';
-        if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
-        if (mainWindow.isMaximized()) mainWindow.unmaximize();
-
-        mainWindow.setMaximizable(false);
-
-        const safeW = Math.max(parseInt(width) || 975, 975);
-        const safeH = Math.max(parseInt(height) || 170, 170);
-        const bounds = mainWindow.getBounds();
-
-        mainWindow.setBounds({ x: bounds.x, y: bounds.y, width: safeW, height: safeH });
-    });
+    const safeW = Math.max(parseInt(width) || 200, 200);
+    const safeH = Math.max(parseInt(height) || 150, 150);
+    
+    const bounds = mainWindow.getBounds();
+    mainWindow.setBounds({ x: bounds.x, y: bounds.y, width: safeW, height: safeH });
+});
 
     // 3. WINDOW STATE HANDLERS
     ipcMain.on('maximize-app', () => {
@@ -910,55 +849,46 @@ ipcMain.on('clipboard-write-text', (event, text) => {
         mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
     });
 
-    ipcMain.on('force-maximize', () => {
-        currentSessionMode = 'fs';
-        if (mainWindow) {
-            if (mainWindow.isMaximized()) mainWindow.unmaximize();
-            mainWindow.setMaximizable(false);
-        }
-    });
-
     ipcMain.on('minimize-app', () => { if (mainWindow) mainWindow.minimize(); });
     ipcMain.on('close-app', () => { if (mainWindow) { mainWindow.webContents.send('scrub-workspace'); mainWindow.hide(); } });
     ipcMain.on('quit-app', () => { app.isQuitting = true; app.quit(); });
     ipcMain.on('set-always-on-top', (e, f) => { if(mainWindow) mainWindow.setAlwaysOnTop(f, 'screen-saver'); });
 
-    ipcMain.on('center-window', () => {
-        if (!mainWindow) return;
-
-        currentSessionMode = 'window';
+   ipcMain.on('center-window', () => {
+    currentSessionMode = 'window';
+    if (mainWindow) {
         if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
         if (mainWindow.isMaximized()) mainWindow.unmaximize();
         mainWindow.setMaximizable(false);
         mainWindow.center();
-    });
+    }
+});
 
     ipcMain.on('restore-window-size', (e, { width, height }) => {
-        if (!mainWindow) return;
+    if (!mainWindow) return;
+    currentSessionMode = 'window';
+    if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    mainWindow.setMaximizable(false);
 
-        currentSessionMode = 'window';
+    const safeW = Math.max(parseInt(width) || 200, 200);
+    const safeH = Math.max(parseInt(height) || 150, 150);
+    const bounds = mainWindow.getBounds();
+    const display = screen.getDisplayMatching(bounds) || screen.getPrimaryDisplay();
+    const workArea = display.workArea;
+    const x = Math.round(workArea.x + (workArea.width - safeW) / 2);
+    const y = Math.round(workArea.y + (workArea.height - safeH) / 2);
+
+    setTimeout(() => {
+        if (!mainWindow) return;
         if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
         if (mainWindow.isMaximized()) mainWindow.unmaximize();
         mainWindow.setMaximizable(false);
-
-        const safeW = Math.max(parseInt(width) || 975, 975);
-        const safeH = Math.max(parseInt(height) || 170, 170);
-        const bounds = mainWindow.getBounds();
-        const display = screen.getDisplayMatching(bounds) || screen.getPrimaryDisplay();
-        const workArea = display.workArea;
-        const x = Math.round(workArea.x + (workArea.width - safeW) / 2);
-        const y = Math.round(workArea.y + (workArea.height - safeH) / 2);
-
-        setTimeout(() => {
-            if (!mainWindow) return;
-            if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
-            if (mainWindow.isMaximized()) mainWindow.unmaximize();
-            mainWindow.setMaximizable(false);
-            mainWindow.setBounds({ x, y, width: safeW, height: safeH });
-            mainWindow.show();
-            mainWindow.focus();
-        }, 25);
-    });
+        mainWindow.setBounds({ x, y, width: safeW, height: safeH });
+        mainWindow.show();
+        mainWindow.focus();
+    }, 25);
+});
 
     ipcMain.on('set-window-opacity', (e, o) => { if(mainWindow) mainWindow.setOpacity(o); });
     

@@ -16,7 +16,7 @@ const ALLOWED_INVOKE_CHANNELS = [
 ];
 
 const ALLOWED_RECEIVE_CHANNELS = [
-    'window-shown', 'window-state-change', 'migration-result', 'license-response', 'wgc-data-received'
+    'window-shown', 'window-shown-tray-restore', 'window-state-change', 'migration-result', 'license-response', 'wgc-data-received'
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {
