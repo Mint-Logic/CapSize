@@ -94,6 +94,9 @@ if (AppFeatures.type === 'core') {
     userSettings.arrowStyle = 'v'; userSettings.autoClipboard = false; userSettings.openAtLogin = false;
 }
 
+let preFullscreenW = 0;
+let preFullscreenH = 0;
+
 let originalPalette = [];
 let snapRadius = 20; 
 let angleSnapRad = Math.PI / 12;
@@ -1210,7 +1213,7 @@ async function enterFullscreenMode(providedBase64 = null) {
     }
 
     const img = new Image();
-    // Inside enterFullscreenMode()
+   
 img.onload = () => {
     capturedImage = img; 
     window.electronAPI.send('set-window-opacity', 1);
@@ -1231,7 +1234,10 @@ img.onload = () => {
 
     // ADD THIS TIMEOUT WRAPPER
     setTimeout(() => {
+        preFullscreenW = w;
+        preFullscreenH = h;
         w = window.innerWidth;
+
         h = window.innerHeight;
         if(inpW) inpW.value = w;
         if(inpH) inpH.value = h;
@@ -1280,11 +1286,9 @@ function exitFullscreen() {
 function restoreWindowAfterFullscreen() {
     isSuppressingResize = true;
 
-    const targetW = Math.max(parseInt(userSettings.startupW || w || 840, 10), 50);
-    const targetH = Math.max(parseInt(userSettings.startupH || h || 340, 10), 50);
-
-    w = targetW;
-    h = targetH;
+    // Favor the cached dimensions from right before fullscreen was activated
+    w = preFullscreenW || userSettings.startupW || 840;
+    h = preFullscreenH || userSettings.startupH || 340;
 
     if (inpW) inpW.value = w;
     if (inpH) inpH.value = h;
@@ -2544,8 +2548,16 @@ window.addEventListener('resize', () => {
     
     resizeTimer = setTimeout(() => {
         const WINDOW_FLOOR_W = 865; 
+        const WINDOW_FLOOR_H = 82; // 170px (Window Min) - 98px (UI Height) + 10px buffer
+
+        // Protect width
         if (newW <= WINDOW_FLOOR_W && w < newW) {
              newW = w; 
+        }
+        
+        // Protect height
+        if (newH <= WINDOW_FLOOR_H && h < newH) {
+             newH = h;
         }
         
         if (w !== newW || h !== newH) {
@@ -2556,7 +2568,7 @@ window.addEventListener('resize', () => {
         } else {
             renderMain();
         }
-    }, 50); 
+    }, 50);
 });
 
 winResizeGrip.onpointerdown = (e) => { 
@@ -2658,8 +2670,8 @@ if (exitBtn) {
             backdrop.style.display = 'none';
         }
 
-        // Force system mode to drop fullscreen status completely
-        window.electronAPI.send('resize-window', { width: userSettings.startupW + UI_W_OFFSET, height: userSettings.startupH + UI_H_OFFSET });
+        // THE FIX: We removed the dangerous string-concatenation 'resize-window' call here.
+        // We now rely entirely on this function, which safely uses parseInt() to do the math.
         restoreWindowAfterFullscreen();
     });
 }
@@ -5564,51 +5576,58 @@ window.electronAPI.on('scrub-workspace', () => {
 window.electronAPI.on('window-shown-tray-restore', () => {
     isSuppressingResize = true;
     
-    // We already have our EXACT custom size in memory (e.g. 730x340)
+    // We already have our EXACT custom size in memory from before it was hidden!
     if (inpW) inpW.value = w;
     if (inpH) inpH.value = h;
 
     // Reset view constraints cleanly
     frame.style.display = 'block';
+    frame.style.width = w + 'px';
+    frame.style.height = h + 'px';
+    frame.style.outline = `2px dashed ${userSettings.accentColor || '#8CFA96'}`;
     frame.classList.remove('clean-slate', 'immersive-active');
-    resetFramePosition();
     
+    resetFramePosition();
     updateCanvasSize(w, h, true);
     
-    // THE ULTIMATE FIX: Force main process to lock the dimensions and center it.
-    // By using 'restore-window-size', we execute an atomic snap based purely on our internal numbers.
+    // Force main process to lock the dimensions and center it based on last used size
     window.electronAPI.send('restore-window-size', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
     
     setTimeout(() => {
         isSuppressingResize = false;
-        renderMain();
+        if (typeof renderMain === 'function') renderMain();
     }, 150);
 });
 
+// Handles wake-up via Global Hotkey toggle
 window.electronAPI.on('window-shown', () => {
-    const frameEl = document.getElementById('frame');
+    isSuppressingResize = true;
     
-    // THE FIX: Force the internal variables back to startup defaults
-    w = userSettings.startupW || 840;
-    h = userSettings.startupH || 340;
+    const frameEl = document.getElementById('frame');
 
     if (frameEl) {
-        frameEl.classList.remove('clean-slate');
+        frameEl.classList.remove('clean-slate', 'immersive-active');
         frameEl.style.display = 'block';
-        // Reset the physical style dimensions
         frameEl.style.width = w + 'px';
         frameEl.style.height = h + 'px';
         frameEl.style.outline = `2px dashed ${userSettings.accentColor || '#8CFA96'}`;
     }
     
-    // Sync the header inputs so they don't show the old "giant" numbers
+    resetFramePosition();
+    
     if (inpW) inpW.value = w;
     if (inpH) inpH.value = h;
 
     isFullscreen = false;
     isWGCFrozen = false;
     
-    // Repaint the canvases to the new smaller size
-    if (typeof updateCanvasSize === 'function') updateCanvasSize(w, h, true);
-    if (typeof renderMain === 'function') renderMain();
+    updateCanvasSize(w, h, true);
+    
+    // Snap the physical window back to our exact active dimensions
+    window.electronAPI.send('restore-window-size', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
+
+    setTimeout(() => {
+        isSuppressingResize = false;
+        if (typeof renderMain === 'function') renderMain();
+    }, 150);
 });

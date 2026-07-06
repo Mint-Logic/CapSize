@@ -51,8 +51,6 @@ try {
     }
 }
 
-let lastTrayBounds = null;
-
 let currentSessionMode = null;
 
 // ==========================================
@@ -319,10 +317,13 @@ function getStartupWindowBounds() {
         } catch (e) { console.error(e); }
     }
 
-    const contentW = Math.max(parseInt(startW, 10) || 840, 975);
-    const contentH = Math.max(parseInt(startH, 10) || 340, 170);
-    const windowW = contentW + 120;
-    const windowH = contentH + 98;
+    // 1. Let the canvas content shrink all the way down to 50x50
+    const contentW = Math.max(parseInt(startW, 10) || 840, 50); 
+    const contentH = Math.max(parseInt(startH, 10) || 340, 50);
+
+    // 2. Enforce the hardcoded UI boundaries on the overall window frame
+    const windowW = Math.max(contentW + 120, 975); 
+    const windowH = Math.max(contentH + 98, 170);
 
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()) || screen.getPrimaryDisplay();
     const workArea = display.workArea;
@@ -387,27 +388,70 @@ async function performInstantCapture() {
     if (!currentSessionMode) currentSessionMode = getInitialMode();
 
     if (currentSessionMode === 'fs') {
-        // ... (Keep all your existing Fullscreen/WGC capture logic here) ...
-    } else {
-        if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
-        if (mainWindow.isMaximized()) mainWindow.unmaximize();
-        mainWindow.setMaximizable(false);
-
-        if (currentSessionMode === 'window') {
-            // It was already running, just wake it up
-            mainWindow.setOpacity(1);
-            mainWindow.show();
-            mainWindow.focus();
-            mainWindow.webContents.send('window-shown-tray-restore');
+            const wasVisible = mainWindow.isVisible();
+    
+            // 1. CLEAR CAPSIZE (Only if it is physically blocking the screen)
+            if (wasVisible) {
+                mainWindow.hide();
+                await new Promise(r => setTimeout(r, 150)); 
+            }
+    
+            // 2. THE 16ms MICRO-FLUSH (WGC EXCLUSIVE)
+            try {
+                let base64 = null;
+                if (wgc) {
+                    const point = screen.getCursorScreenPoint();
+                    
+                    // A. Tap the API to wake it up and clear the 5-minute-old stale frame
+                    wgc.captureScreen(point.x, point.y); 
+                    
+                    // B. Wait EXACTLY 16ms (1 monitor frame at 60Hz)
+                    // This gives Windows the absolute minimum time needed to composite the live pixels
+                    await new Promise(r => setTimeout(r, 16)); 
+                    
+                    // C. Grab the fresh, live frame
+                    const rawBuffer = wgc.captureScreen(point.x, point.y); 
+                    
+                    if (rawBuffer && rawBuffer.length > 0) {
+                        base64 = `data:image/png;base64,${rawBuffer.toString('base64')}`;
+                    }
+                } else {
+                    // ELECTRON NATIVE FALLBACK
+                    const b = mainWindow.getBounds(); 
+                    const d = screen.getDisplayMatching(b);
+                    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) } });
+                    const src = sources.find(s => s.display_id === d.id.toString()) || sources[0];
+                    if (src) base64 = src.thumbnail.toDataURL();
+                }
+    
+                // 3. SHOW THE CAPTURE
+                if (base64) {
+                    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+                    mainWindow.setFullScreen(true);
+                    
+                    mainWindow.setOpacity(0); // <-- CLOAK BEFORE SHOWING
+                    mainWindow.show();
+                    mainWindow.focus();
+                    // mainWindow.setOpacity(1); // <-- Let renderer.js reveal it
+                    
+                    mainWindow.webContents.send('wgc-data-received', base64);
+                }
+            } catch (e) {
+                console.error("Hotkey FS Capture Error:", e);
+            }
         } else {
-            applyNormalWindowBounds();
-            mainWindow.show();
-            mainWindow.focus();
-            mainWindow.setOpacity(1);
-            mainWindow.webContents.send('window-shown'); 
+            // --- WINDOWED MODE HOTKEY TOGGLE ---
+            if (mainWindow.isVisible()) {
+                mainWindow.hide();
+            } else {
+                if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+                mainWindow.show();
+                mainWindow.focus();
+                mainWindow.setOpacity(1);
+                mainWindow.webContents.send('window-shown'); 
+            }
         }
     }
-}
 
 // Ensure the mode is updated when the user manually switches modes in the UI
 ipcMain.on('force-maximize', () => { 
@@ -813,31 +857,35 @@ ipcMain.on('clipboard-write-text', (event, text) => {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(currentConfig, null, 2));
 });
 
-    // 1. STANDARD RESIZE
-   ipcMain.on('resize-window', (e, { width, height }) => { 
+// 1. STANDARD RESIZE
+ipcMain.on('resize-window', (e, { width, height }) => { 
     currentSessionMode = 'window'; 
     if (mainWindow) {
         if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
         if (mainWindow.isMaximized()) mainWindow.unmaximize();
         mainWindow.setMaximizable(false);
         
+        const b = mainWindow.getBounds();
+        
         mainWindow.setBounds({ 
-            width: Math.max(parseInt(width), 200),
-            height: Math.max(parseInt(height), 150)
+            x: b.x,
+            y: b.y,
+            width: Math.max(parseInt(width), 975), // Enforce 975 min
+            height: Math.max(parseInt(height), 170) // Enforce 170 min
         });
     }
 });
 
-    // 2. ANCHORED RESIZE
-    ipcMain.on('resize-anchored', (e, { width, height }) => {
+// 2. ANCHORED RESIZE
+ipcMain.on('resize-anchored', (e, { width, height }) => {
     if (!mainWindow) return;
     currentSessionMode = 'window';
     if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
     if (mainWindow.isMaximized()) mainWindow.unmaximize();
     mainWindow.setMaximizable(false);
 
-    const safeW = Math.max(parseInt(width) || 200, 200);
-    const safeH = Math.max(parseInt(height) || 150, 150);
+    const safeW = Math.max(parseInt(width) || 200, 975); // Enforce 975 min
+    const safeH = Math.max(parseInt(height) || 150, 170); // Enforce 170 min
     
     const bounds = mainWindow.getBounds();
     mainWindow.setBounds({ x: bounds.x, y: bounds.y, width: safeW, height: safeH });
@@ -864,15 +912,15 @@ ipcMain.on('clipboard-write-text', (event, text) => {
     }
 });
 
-    ipcMain.on('restore-window-size', (e, { width, height }) => {
+ipcMain.on('restore-window-size', (e, { width, height }) => {
     if (!mainWindow) return;
     currentSessionMode = 'window';
     if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
     if (mainWindow.isMaximized()) mainWindow.unmaximize();
     mainWindow.setMaximizable(false);
 
-    const safeW = Math.max(parseInt(width) || 200, 200);
-    const safeH = Math.max(parseInt(height) || 150, 150);
+    const safeW = Math.max(parseInt(width) || 200, 975); // Enforce 975 min
+    const safeH = Math.max(parseInt(height) || 150, 170); // Enforce 170 min
     const bounds = mainWindow.getBounds();
     const display = screen.getDisplayMatching(bounds) || screen.getPrimaryDisplay();
     const workArea = display.workArea;
