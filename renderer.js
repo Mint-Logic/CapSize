@@ -5291,7 +5291,21 @@ if (!userSettings.startFullscreen) {
     isSuppressingResize = true;
     window.electronAPI.send('resize-window', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
     window.electronAPI.send('center-window');
-    setTimeout(() => { initCanvas(); isSuppressingResize = false; }, 100);
+    
+    setTimeout(() => { 
+        initCanvas(); 
+        isSuppressingResize = false; 
+        
+        // THE REVEAL: Tell main.js to show the window NOW, after DOM and Canvas are fully built
+        setTimeout(() => {
+            window.electronAPI.send('renderer-ready-to-show');
+        }, 50);
+        
+    }, 100);
+} else {
+    setTimeout(() => {
+        window.electronAPI.send('renderer-ready-to-show');
+    }, 150);
 }
 
 // Render Dev UI (If Active)
@@ -5576,11 +5590,9 @@ window.electronAPI.on('scrub-workspace', () => {
 window.electronAPI.on('window-shown-tray-restore', () => {
     isSuppressingResize = true;
     
-    // We already have our EXACT custom size in memory from before it was hidden!
     if (inpW) inpW.value = w;
     if (inpH) inpH.value = h;
 
-    // Reset view constraints cleanly
     frame.style.display = 'block';
     frame.style.width = w + 'px';
     frame.style.height = h + 'px';
@@ -5590,12 +5602,17 @@ window.electronAPI.on('window-shown-tray-restore', () => {
     resetFramePosition();
     updateCanvasSize(w, h, true);
     
-    // Force main process to lock the dimensions and center it based on last used size
     window.electronAPI.send('restore-window-size', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
     
     setTimeout(() => {
         isSuppressingResize = false;
         if (typeof renderMain === 'function') renderMain();
+        
+        // REVEAL: The frame is built, it is now safe to show the user
+        window.electronAPI.send('set-window-opacity', 1);
+        
+        // Optional: Ensure the window grabs focus now that it's visible
+        window.electronAPI.send('center-window'); // center-window also triggers a focus event in main
     }, 150);
 });
 
@@ -5623,11 +5640,13 @@ window.electronAPI.on('window-shown', () => {
     
     updateCanvasSize(w, h, true);
     
-    // Snap the physical window back to our exact active dimensions
     window.electronAPI.send('restore-window-size', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
 
     setTimeout(() => {
         isSuppressingResize = false;
         if (typeof renderMain === 'function') renderMain();
+        
+        // REVEAL: The frame is built, it is now safe to show the user
+        window.electronAPI.send('set-window-opacity', 1);
     }, 150);
 });

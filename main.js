@@ -367,10 +367,10 @@ function toggleWindow() {
             if (mainWindow.isMaximized()) mainWindow.unmaximize();
             mainWindow.setMaximizable(false);
 
-            // Just wake it up. The renderer will take over sizing immediately.
-            mainWindow.setOpacity(1);
+            // CLOAK: Keep the window invisible while the renderer rebuilds the frame
+            mainWindow.setOpacity(0);
             mainWindow.show();
-            mainWindow.focus();
+            // Don't focus yet, wait for the reveal
 
             mainWindow.webContents.send('window-shown-tray-restore');
         }
@@ -445,9 +445,11 @@ async function performInstantCapture() {
                 mainWindow.hide();
             } else {
                 if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+                
+                // CLOAK BEFORE SHOWING
+                mainWindow.setOpacity(0);
                 mainWindow.show();
-                mainWindow.focus();
-                mainWindow.setOpacity(1);
+                
                 mainWindow.webContents.send('window-shown'); 
             }
         }
@@ -479,12 +481,11 @@ ipcMain.on('resize-window', () => { currentSessionMode = 'window'; });
         });
         
         mainWindow.loadFile('index.html');
+        
         mainWindow.once('ready-to-show', () => {
             if (!process.argv.includes('--hidden')) {
+                // Prep the bounds in the background, but do NOT show the window yet!
                 applyNormalWindowBounds();
-                mainWindow.show();
-                mainWindow.setOpacity(1);
-                mainWindow.focus();
             }
         });
         mainWindow.on('maximize', () => mainWindow.webContents.send('window-state-change', 'maximized'));
@@ -570,7 +571,7 @@ ipcMain.on('resize-window', () => { currentSessionMode = 'window'; });
         if (!mainWindow) return;
         if (!process.argv.includes('--hidden')) {
             applyNormalWindowBounds();
-            mainWindow.show();
+            mainWindow.show(); // <-- Natively reveal the fully assembled window
             mainWindow.setOpacity(1);
             mainWindow.focus();
         }
