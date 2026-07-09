@@ -746,11 +746,21 @@ function applyShadow(ctx, on) {
 }
 
 function clearBackground() {
-    ctx.setTransform(1, 0, 0, 1, 0, 0); shapeLayerCtx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height); shapeLayerCtx.clearRect(0, 0, shapeLayerCanvas.width, shapeLayerCanvas.height); 
-    const w = backgroundCanvas.width; backgroundCanvas.width = w; 
-    bgCtx.scale(dpr, dpr); bgCtx.lineCap = userSettings.cornerStyle || 'round'; bgCtx.lineJoin = userSettings.cornerStyle || 'round';
+    ctx.setTransform(1, 0, 0, 1, 0, 0); 
+    shapeLayerCtx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height); 
+    shapeLayerCtx.clearRect(0, 0, shapeLayerCanvas.width, shapeLayerCanvas.height); 
+    
+    // Force reset dimensions to clear graphic memory completely
+    backgroundCanvas.width = w * dpr; 
+    backgroundCanvas.height = h * dpr;
+    
+    bgCtx.setTransform(1, 0, 0, 1, 0, 0);
+    bgCtx.scale(dpr, dpr); 
+    bgCtx.clearRect(0, 0, w, h);
+    
+    bgCtx.lineCap = userSettings.cornerStyle || 'round'; 
+    bgCtx.lineJoin = userSettings.cornerStyle || 'round';
 }
 
 // =====================================================================
@@ -1189,6 +1199,9 @@ const doSave = async (e) => {
 
 async function enterFullscreenMode(providedBase64 = null) {
     isSuppressingResize = true;
+
+    // ⭐ TELL MAIN WE ARE IN FULLSCREEN NOW
+    window.electronAPI.send('force-maximize');
     
     const frameEl = document.getElementById('frame');
     if (frameEl) {
@@ -1271,6 +1284,9 @@ img.onload = () => {
 function exitFullscreen() { 
     isFullscreen = false; 
     isCreatingFrame = false; 
+
+    // ⭐ TELL MAIN WE ARE BACK IN WINDOWED MODE NOW
+    window.electronAPI.send('resize-window', { width: w, height: h });
     
     document.body.classList.remove('fullscreen'); 
     floatingBar.classList.add('hidden'); 
@@ -1286,15 +1302,32 @@ function exitFullscreen() {
 function restoreWindowAfterFullscreen() {
     isSuppressingResize = true;
 
-    // Favor the cached dimensions from right before fullscreen was activated
-    w = preFullscreenW || userSettings.startupW || 840;
-    h = preFullscreenH || userSettings.startupH || 340;
+    // 1. Favor your cached window dimensions, falling back to clean app defaults
+    let targetW = preFullscreenW || userSettings.startupW || 840;
+    let targetH = preFullscreenH || userSettings.startupH || 340;
+
+    // ⭐ THE CRITICAL CLAMP: If the cached variables match or exceed your monitor size,
+    // forcefully drop them back down to safe, manageable desktop dimensions.
+    if (targetW >= window.screen.availWidth || targetW <= 50) {
+        targetW = userSettings.startupW || 840;
+    }
+    if (targetH >= window.screen.availHeight || targetH <= 50) {
+        targetH = userSettings.startupH || 340;
+    }
+
+    w = targetW;
+    h = targetH;
 
     if (inpW) inpW.value = w;
     if (inpH) inpH.value = h;
 
     updateCanvasSize(w, h, true);
-    window.electronAPI.send('restore-window-size', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
+    
+    // Send the safe dimensions over to Main to execute the native resize safely
+    window.electronAPI.send('restore-window-size', { 
+        width: w + UI_W_OFFSET, 
+        height: h + UI_H_OFFSET 
+    });
 
     setTimeout(() => {
         isSuppressingResize = false;
@@ -3059,13 +3092,15 @@ window.addEventListener('keydown', (e) => {
         if (colorPop && !colorPop.classList.contains('hidden')) { colorPop.classList.add('hidden'); return; }
         if (fbColorPop && !fbColorPop.classList.contains('hidden')) { fbColorPop.classList.add('hidden'); return; }
         if (activeTextWrapper) { commitActiveText(); return; }
+        
         if (isFullscreen) {
             e.preventDefault();
             e.stopPropagation();
-            exitFullscreen();
-            restoreWindowAfterFullscreen();
+            // Direct jump to tray; Main will broadcast 'scrub-workspace' automatically
+            window.electronAPI.send('close-app');
             return;
         }
+        
         if (isDown || isCreatingFrame) {
             isDown = false; isCreatingFrame = false;
             if(isFullscreen) { frame.style.display = 'none'; inpW.value = 0; inpH.value = 0; }
@@ -5563,19 +5598,21 @@ if (btnUpgradePro) {
 // HIDDEN STATE SCRUBBER (GHOST FRAME FIX)
 // ==========================================
 window.electronAPI.on('scrub-workspace', () => {
-    // 1. Wipe shapes
     if (typeof doDelete === 'function') doDelete();
     
-    // 2. Clear backdrop
+    // Ensure the hardware backdrop DOM image element is explicitly cleared out
     const backdrop = document.getElementById('backdrop-img');
-    if (backdrop) { backdrop.src = ''; backdrop.style.display = 'none'; }
+    if (backdrop) { 
+        backdrop.src = ''; 
+        backdrop.style.display = 'none'; 
+        backdrop.style.width = '0px';
+        backdrop.style.height = '0px';
+    }
     
-    // 3. THE SOURCE FIX: Reset the frame, but KEEP it display: block
     document.body.classList.remove('fullscreen');
     const frameEl = document.getElementById('frame');
     if (frameEl) {
         frameEl.classList.remove('immersive-active');
-        // We use 'clean-slate' to hide the content, but keep the element block-level
         frameEl.classList.add('clean-slate'); 
         frameEl.style.display = 'block'; 
         frameEl.style.outline = `2px dashed ${userSettings.accentColor || '#8CFA96'}`;
@@ -5586,33 +5623,59 @@ window.electronAPI.on('scrub-workspace', () => {
 // WINDOW MODE WAKE-UP HANDLER
 // ==========================================
 
-// Handles precise workspace recovery when returning from the System Tray
-window.electronAPI.on('window-shown-tray-restore', () => {
+// Handles wake-up via Global Hotkey toggle
+window.electronAPI.on('window-shown', (event, dimensions) => {
     isSuppressingResize = true;
+    
+    // 1. Force break all Fullscreen / WGC image locks
+    isFullscreen = false;
+    isWGCFrozen = false;
+    capturedImage = null; 
+    hasSnappedInFullscreen = false;
+
+    // ⭐ THE CRITICAL FIX: Explicitly strip, hide, and break the HTML image element cache
+    const backdrop = document.getElementById('backdrop-img');
+    if (backdrop) {
+        backdrop.src = "";             // Break the image source link
+        backdrop.style.display = 'none'; // Completely hide it from layout processing
+        backdrop.style.width = '0px';
+        backdrop.style.height = '0px';
+    }
+    
+    // Remove the fullscreen styling flag from the body element container
+    document.body.classList.remove('fullscreen');
+
+    // 2. Extract stable default bounding configurations
+    const targetW = (dimensions && dimensions.width) ? dimensions.width : (userSettings.startupW || 840);
+    const targetH = (dimensions && dimensions.height) ? dimensions.height : (userSettings.startupH || 340);
+    
+    w = targetW;
+    h = targetH;
+
+    const frameEl = document.getElementById('frame');
+    if (frameEl) {
+        frameEl.classList.remove('clean-slate', 'immersive-active');
+        frameEl.style.display = 'block';
+        frameEl.style.width = w + 'px';
+        frameEl.style.height = h + 'px';
+        frameEl.style.outline = `2px dashed ${userSettings.accentColor || '#8CFA96'}`;
+    }
+    
+    resetFramePosition();
+    if (typeof clearBackground === 'function') clearBackground(); // Clears canvas memory buffers cleanly
+    updateCanvasSize(w, h, true);
     
     if (inpW) inpW.value = w;
     if (inpH) inpH.value = h;
-
-    frame.style.display = 'block';
-    frame.style.width = w + 'px';
-    frame.style.height = h + 'px';
-    frame.style.outline = `2px dashed ${userSettings.accentColor || '#8CFA96'}`;
-    frame.classList.remove('clean-slate', 'immersive-active');
-    
-    resetFramePosition();
-    updateCanvasSize(w, h, true);
     
     window.electronAPI.send('restore-window-size', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
-    
+
     setTimeout(() => {
         isSuppressingResize = false;
-        if (typeof renderMain === 'function') renderMain();
+        if (typeof renderMain === 'function') renderMain(); 
         
-        // REVEAL: The frame is built, it is now safe to show the user
+        // REVEAL: Window layout is safe to show
         window.electronAPI.send('set-window-opacity', 1);
-        
-        // Optional: Ensure the window grabs focus now that it's visible
-        window.electronAPI.send('center-window'); // center-window also triggers a focus event in main
     }, 150);
 });
 

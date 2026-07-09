@@ -379,87 +379,119 @@ function toggleWindow() {
 
 async function performInstantCapture() {
     if (!mainWindow) return;
+    if (mainWindow.isVisible()) return; 
 
     if (process.argv.includes('--hidden')) {
         const index = process.argv.indexOf('--hidden');
         if (index > -1) process.argv.splice(index, 1);
     }
 
-    if (!currentSessionMode) currentSessionMode = getInitialMode();
-
-    if (currentSessionMode === 'fs') {
-            const wasVisible = mainWindow.isVisible();
-    
-            // 1. CLEAR CAPSIZE (Only if it is physically blocking the screen)
-            if (wasVisible) {
-                mainWindow.hide();
-                await new Promise(r => setTimeout(r, 150)); 
-            }
-    
-            // 2. THE 16ms MICRO-FLUSH (WGC EXCLUSIVE)
-            try {
-                let base64 = null;
-                if (wgc) {
-                    const point = screen.getCursorScreenPoint();
-                    
-                    // A. Tap the API to wake it up and clear the 5-minute-old stale frame
-                    wgc.captureScreen(point.x, point.y); 
-                    
-                    // B. Wait EXACTLY 16ms (1 monitor frame at 60Hz)
-                    // This gives Windows the absolute minimum time needed to composite the live pixels
-                    await new Promise(r => setTimeout(r, 16)); 
-                    
-                    // C. Grab the fresh, live frame
-                    const rawBuffer = wgc.captureScreen(point.x, point.y); 
-                    
-                    if (rawBuffer && rawBuffer.length > 0) {
-                        base64 = `data:image/png;base64,${rawBuffer.toString('base64')}`;
-                    }
-                } else {
-                    // ELECTRON NATIVE FALLBACK
-                    const b = mainWindow.getBounds(); 
-                    const d = screen.getDisplayMatching(b);
-                    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) } });
-                    const src = sources.find(s => s.display_id === d.id.toString()) || sources[0];
-                    if (src) base64 = src.thumbnail.toDataURL();
-                }
-    
-                // 3. SHOW THE CAPTURE
-                if (base64) {
-                    if (mainWindow.isMaximized()) mainWindow.unmaximize();
-                    mainWindow.setFullScreen(true);
-                    
-                    mainWindow.setOpacity(0); // <-- CLOAK BEFORE SHOWING
-                    mainWindow.show();
-                    mainWindow.focus();
-                    // mainWindow.setOpacity(1); // <-- Let renderer.js reveal it
-                    
-                    mainWindow.webContents.send('wgc-data-received', base64);
-                }
-            } catch (e) {
-                console.error("Hotkey FS Capture Error:", e);
-            }
-        } else {
-            // --- WINDOWED MODE HOTKEY TOGGLE ---
-            if (mainWindow.isVisible()) {
-                mainWindow.hide();
-            } else {
-                if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
-                
-                // CLOAK BEFORE SHOWING
-                mainWindow.setOpacity(0);
-                mainWindow.show();
-                
-                mainWindow.webContents.send('window-shown'); 
-            }
+    // ⭐ THE DYNAMIC RESOLUTION FIX:
+    // Read the user's last tracked session mode directly from the config file!
+    let lastUsedMode = 'window'; 
+    if (fs.existsSync(CONFIG_FILE)) {
+        try {
+            const configData = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+            // Default to whatever their startup preference is, but favor their last active closed state if present
+            lastUsedMode = configData.lastActiveMode || (configData.startFullscreen ? 'fs' : 'window');
+        } catch (e) { 
+            console.error(e); 
         }
     }
 
-// Ensure the mode is updated when the user manually switches modes in the UI
+    currentSessionMode = lastUsedMode;
+
+    // ─── BRANCH 1: USER WAS IN FULLSCREEN MODE ───
+    if (currentSessionMode === 'fs') {
+        try {
+            let base64 = null;
+            if (wgc) {
+                const point = screen.getCursorScreenPoint();
+                wgc.captureScreen(point.x, point.y); 
+                await new Promise(r => setTimeout(r, 16)); 
+                const rawBuffer = wgc.captureScreen(point.x, point.y); 
+                if (rawBuffer && rawBuffer.length > 0) {
+                    base64 = `data:image/png;base64,${rawBuffer.toString('base64')}`;
+                }
+            } else {
+                const b = mainWindow.getBounds(); 
+                const d = screen.getDisplayMatching(b);
+                const sources = await desktopCapturer.getSources({ 
+                    types: ['screen'], 
+                    thumbnailSize: { 
+                        width: Math.round(d.size.width * d.scaleFactor), 
+                        height: Math.round(d.size.height * d.scaleFactor) 
+                    } 
+                });
+                const src = sources.find(s => s.display_id === d.id.toString()) || sources[0];
+                if (src) base64 = src.thumbnail.toDataURL();
+            }
+
+            if (base64) {
+                if (mainWindow.isMaximized()) mainWindow.unmaximize();
+                mainWindow.setFullScreen(true);
+                mainWindow.setOpacity(0); 
+                mainWindow.show();
+                mainWindow.focus();
+                mainWindow.webContents.send('wgc-data-received', base64);
+            }
+        } catch (e) {
+            console.error("Hotkey FS Capture Error:", e);
+        }
+    } 
+    // ─── BRANCH 2: USER WAS IN WINDOWED MODE ───
+    else {
+        if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+        if (mainWindow.isMaximized()) mainWindow.unmaximize();
+        mainWindow.setMaximizable(false);
+        
+        mainWindow.setOpacity(0);
+        
+        const normalBounds = getStartupWindowBounds();
+        mainWindow.setBounds(normalBounds);
+
+        setTimeout(() => {
+            if (!mainWindow) return;
+            mainWindow.show();
+            mainWindow.focus();
+            
+            const contentW = normalBounds.width - 120;
+            const contentH = normalBounds.height - 98;
+            
+            mainWindow.webContents.send('window-shown', { width: contentW, height: contentH }); 
+        }, 60);
+    }
+}
+
+// ⭐ THE STATE PERSISTENCE INJECTIONS:
+// Make sure when these window actions are triggered, they write their state back to disk!
 ipcMain.on('force-maximize', () => { 
-    currentSessionMode = 'fs'; 
+    currentSessionMode = 'fs';
+    saveStateModeToConfig('fs');
 });
-ipcMain.on('resize-window', () => { currentSessionMode = 'window'; });
+
+ipcMain.on('resize-window', (e, b) => { 
+    currentSessionMode = 'window'; 
+    saveStateModeToConfig('window');
+});
+
+ipcMain.on('resize-anchored', (e, b) => {
+    currentSessionMode = 'window';
+    saveStateModeToConfig('window');
+});
+
+// Helper function to safely update the configuration file on the fly
+function saveStateModeToConfig(modeString) {
+    try {
+        if (fs.existsSync(CONFIG_FILE)) {
+            const currentConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+            currentConfig.lastActiveMode = modeString;
+            fs.writeFileSync(CONFIG_FILE, JSON.stringify(currentConfig, null, 2));
+        }
+    } catch (e) {
+        console.error("Failed to persist active window mode state:", e);
+    }
+}
 
     function createWindow() {
         const startupBounds = getStartupWindowBounds();
