@@ -165,11 +165,12 @@ const LENS_OFFSET_X = -65;
 const LENS_OFFSET_Y = -40;
 
 let preWizardW = 0, preWizardH = 0;
-let w = userSettings.startupW;
-let h = userSettings.startupH;
+// THE FIX: Check lastW/H before startupW/H
+let w = userSettings.lastW || userSettings.startupW;
+let h = userSettings.lastH || userSettings.startupH;
 let dpr = window.devicePixelRatio || 1;
 let ignoreInitialResize = true;
-const requiredW = Math.max(userSettings.startupW + UI_W_OFFSET, 1000);
+const requiredW = Math.max((userSettings.lastW || userSettings.startupW) + UI_W_OFFSET, 1000);
 
 setTimeout(() => {
     ignoreInitialResize = false;
@@ -1158,6 +1159,16 @@ const doClipboard = async () => {
 
 const doSave = async (e) => {
     if(activeTextWrapper) commitActiveText();
+    
+    // 1. Check if the grid is currently on, and if they want it hidden for export
+    const gridEl = document.getElementById('grid');
+    const gridWasVisible = gridEl && !gridEl.classList.contains('hidden');
+    
+    if (gridWasVisible && !userSettings.exportGrid) {
+        gridEl.classList.add('hidden');
+        renderMain(); // Repaint the canvas without the grid
+    }
+
     let dataURL;
     if (isWGCFrozen && isFullscreen && capturedImage) {
         const tempCanvas = document.createElement('canvas'); const tempCtx = tempCanvas.getContext('2d');
@@ -1170,6 +1181,12 @@ const doSave = async (e) => {
         dataURL = canvas.toDataURL('image/png');
     }
 
+    // 2. Safely restore the grid to the screen immediately after the capture
+    if (gridWasVisible && !userSettings.exportGrid) {
+        gridEl.classList.remove('hidden');
+        renderMain(); 
+    }
+
     let saveFolder = userSettings.savePath?.trim() || null;
     const shiftHeld = (e && e.shiftKey === true);
 
@@ -1179,7 +1196,6 @@ const doSave = async (e) => {
         });
         
         if (saveResult === true) {
-            // THE FIX: Removed the broken AppFeatures check. If the setting contains {seq}, we increment!
             if (userSettings.filenameFmt && userSettings.filenameFmt.includes('{seq}')) { 
                 sequenceCounter++; 
                 saveSettings(); 
@@ -1285,8 +1301,9 @@ function exitFullscreen() {
     isFullscreen = false; 
     isCreatingFrame = false; 
 
-    // ⭐ TELL MAIN WE ARE BACK IN WINDOWED MODE NOW
-    window.electronAPI.send('resize-window', { width: w, height: h });
+    // ⭐ THE FIX: We completely remove the `resize-window` IPC call here.
+    // Sending the massive fullscreen dimensions to the OS causes the window to blow up
+    // and bleed into the primary monitor, which breaks Electron's centering math.
     
     document.body.classList.remove('fullscreen'); 
     floatingBar.classList.add('hidden'); 
@@ -1298,35 +1315,33 @@ function exitFullscreen() {
     
     resetFramePosition();
 }
-
 function restoreWindowAfterFullscreen() {
     isSuppressingResize = true;
 
-    // 1. Favor your cached window dimensions, falling back to clean app defaults
-    let targetW = preFullscreenW || userSettings.startupW || 840;
-    let targetH = preFullscreenH || userSettings.startupH || 340;
+    // Force the app to strictly use your requested default startup dimensions.
+    let targetW = parseInt(userSettings.startupW) || 840;
+    let targetH = parseInt(userSettings.startupH) || 340;
 
-    // ⭐ THE CRITICAL CLAMP: If the cached variables match or exceed your monitor size,
-    // forcefully drop them back down to safe, manageable desktop dimensions.
-    if (targetW >= window.screen.availWidth || targetW <= 50) {
-        targetW = userSettings.startupW || 840;
-    }
-    if (targetH >= window.screen.availHeight || targetH <= 50) {
-        targetH = userSettings.startupH || 340;
-    }
+    if (targetW >= window.screen.availWidth - 100) targetW = 840;
+    if (targetH >= window.screen.availHeight - 100) targetH = 340;
 
     w = targetW;
     h = targetH;
+
+    // THE FIX: Overwrite the last known size with the default so hotkey launches respect the reset
+    userSettings.lastW = w;
+    userSettings.lastH = h;
+    saveSettings();
 
     if (inpW) inpW.value = w;
     if (inpH) inpH.value = h;
 
     updateCanvasSize(w, h, true);
     
-    // Send the safe dimensions over to Main to execute the native resize safely
+    // Send the clean, default dimensions over to Main
     window.electronAPI.send('restore-window-size', { 
-        width: w + UI_W_OFFSET, 
-        height: h + UI_H_OFFSET 
+        width: w + (typeof UI_W_OFFSET !== 'undefined' ? UI_W_OFFSET : 120), 
+        height: h + (typeof UI_H_OFFSET !== 'undefined' ? UI_H_OFFSET : 98) 
     });
 
     setTimeout(() => {
@@ -1651,7 +1666,7 @@ window.resetSection = (sectionCode) => {
     if(sectionCode==='draw-shape') keys=['cornerStyle','dottedStyle','defLineWidth','highlighterOpacity', 'cornerRadius'];
     if(sectionCode==='draw-snap') keys=['magnetStrength','angleSnap','showSmartGuides'];
     if(sectionCode==='app-theme') keys=[]; 
-    if(sectionCode==='app-grid') keys=['gridSize','gridOpacity'];
+    if(sectionCode==='app-grid') keys=['gridSize','gridOpacity', 'exportGrid'];
     if(sectionCode==='out-img') keys=['imageFormat','imageQuality','exportPadding','watermarkText'];
     if(sectionCode==='out-save') keys=['savePath','filenameFmt','autoClipboard'];
 
@@ -2581,7 +2596,7 @@ window.addEventListener('resize', () => {
     
     resizeTimer = setTimeout(() => {
         const WINDOW_FLOOR_W = 865; 
-        const WINDOW_FLOOR_H = 82; // 170px (Window Min) - 98px (UI Height) + 10px buffer
+        const WINDOW_FLOOR_H = 82; 
 
         // Protect width
         if (newW <= WINDOW_FLOOR_W && w < newW) {
@@ -2593,11 +2608,16 @@ window.addEventListener('resize', () => {
              newH = h;
         }
         
-        if (w !== newW || h !== newH) {
+       if (w !== newW || h !== newH) {
             if(inpW) inpW.value = Math.round(newW);
             if(inpH) inpH.value = Math.round(newH);
             
             updateCanvasSize(newW, newH, true);
+
+            // THE FIX: Save to session memory instead of overwriting Settings
+            userSettings.lastW = Math.round(newW);
+            userSettings.lastH = Math.round(newH);
+            saveSettings();
         } else {
             renderMain();
         }
@@ -2636,11 +2656,16 @@ const applyDimensions = (overrideW = null, overrideH = null) => {
     const winW = reqW + UI_W_OFFSET; 
     const winH = reqH + UI_H_OFFSET; 
     
-    isSuppressingResize = true;
+   isSuppressingResize = true;
     updateCanvasSize(reqW, reqH);
     
+    // THE FIX: Save to session memory
+    userSettings.lastW = reqW;
+    userSettings.lastH = reqH;
+    saveSettings();
+    
     // Call our new perfectly anchored resize!
-    window.electronAPI.send('resize-anchored', { width: winW, height: winH }); 
+    window.electronAPI.send('resize-anchored', { width: winW, height: winH });
     
     setTimeout(() => {
         isSuppressingResize = false;
@@ -3092,15 +3117,29 @@ window.addEventListener('keydown', (e) => {
         if (colorPop && !colorPop.classList.contains('hidden')) { colorPop.classList.add('hidden'); return; }
         if (fbColorPop && !fbColorPop.classList.contains('hidden')) { fbColorPop.classList.add('hidden'); return; }
         if (activeTextWrapper) { commitActiveText(); return; }
-        
         if (isFullscreen) {
-            e.preventDefault();
-            e.stopPropagation();
-            // Direct jump to tray; Main will broadcast 'scrub-workspace' automatically
-            window.electronAPI.send('close-app');
-            return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // ⭐ THE COMPLETE CLEANUP: Find the exit button and click it programmatically
+    const exitBtn = document.getElementById('fb-exit');
+    if (exitBtn) {
+        exitBtn.click();
+    } else {
+        // Fallback cleanup if the button isn't found in the DOM
+        isWGCFrozen = false;
+        exitFullscreen();
+        
+        const backdrop = document.getElementById('backdrop-img');
+        if (backdrop) {
+            backdrop.src = "";
+            backdrop.style.display = 'none';
         }
         
+        restoreWindowAfterFullscreen();
+    }
+    return;
+}
         if (isDown || isCreatingFrame) {
             isDown = false; isCreatingFrame = false;
             if(isFullscreen) { frame.style.display = 'none'; inpW.value = 0; inpH.value = 0; }
@@ -4532,27 +4571,56 @@ window.addEventListener('drop', async (e) => {
 // LICENSE ACTIVATION FIREWORKS
 // ==========================================
 if (window.electronAPI.on) {
-    window.electronAPI.on('license-response', (event, response) => {
-        if (response && response.success) {
-            // The glorious success toast
-            if (typeof showToast === 'function') {
-                showToast(`PRO ACTIVATED! RESTARTING...`, 2000);
-            }
-            
-            // Optional: Give the UI a quick green flash for that "Pomp and Circumstance"
-            const frame = document.getElementById('frame');
-            if (frame) {
-                frame.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
-                frame.style.borderColor = '#8CFA96';
-                frame.style.boxShadow = '0 0 50px rgba(140, 250, 150, 0.8), inset 0 0 30px rgba(140, 250, 150, 0.5)';
-            }
-        } else {
-            // The rejection toast
-            if (typeof showToast === 'function') {
-                showToast(`Activation Failed: ${response.reason || "Invalid Key"}`, 3000);
+// --- LICENSE RESPONSE LISTENER ---
+window.electronAPI.on('license-response', (event, response) => {
+    if (response.success) {
+        if (typeof showToast === 'function') showToast("PRO ACTIVATED! RESTARTING...", 2000);
+        
+        // THE FIREWORKS 2.0: A true celebration display
+        const activeContainer = document.getElementById('license-prompt-modal') || document.getElementById('frame');
+        if (activeContainer) {
+            const box = activeContainer.classList.contains('modal') ? activeContainer.querySelector('.onboarding-content') : activeContainer;
+            if (box) {
+                // 1. Trigger the external glow and scale physics
+                box.style.transition = 'all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+                box.style.borderColor = 'var(--accent)';
+                box.style.boxShadow = '0 0 80px rgba(140, 250, 150, 0.8), inset 0 0 50px rgba(140, 250, 150, 0.5)';
+                box.style.transform = 'scale(1.05)';
+                box.style.background = '#0a1a0f'; // Deep green tactical tint
+
+                // 2. Overwrite the interior HTML with a bouncing success state
+                box.innerHTML = `
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; animation: popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
+                        <i class="fa-solid fa-unlock-keyhole" style="font-size: 70px; color: var(--accent); margin-bottom: 20px; filter: drop-shadow(0 0 15px rgba(140, 250, 150, 0.8));"></i>
+                        <h2 style="color: #fff; margin: 0; font-family: 'Orbitron', sans-serif; font-size: 28px; letter-spacing: 2px; text-transform: uppercase;">System Unlocked</h2>
+                        <p style="color: var(--accent); font-size: 16px; font-weight: bold; margin-top: 15px; letter-spacing: 1px;">CAPSIZE PRO ACTIVATED!</p>
+                    </div>
+                    <style>
+                        @keyframes popIn { 
+                            0% { transform: scale(0.5); opacity: 0; } 
+                            50% { transform: scale(1.1); }
+                            100% { transform: scale(1); opacity: 1; } 
+                        }
+                    </style>
+                `;
             }
         }
-    });
+
+        // Reset the flags so the Pro wizard triggers upon reload
+        userSettings.hasAskedForLicense = true;  
+        userSettings.introComplete = false;      
+        userSettings.onboardingComplete = false; 
+        if (typeof saveSettings === 'function') saveSettings();
+
+        // Reload the app internally to boot as Pro (extended to 2.2s to enjoy the animation)
+        setTimeout(() => {
+            window.location.reload();
+        }, 2200); 
+        
+    } else {
+        if (typeof showToast === 'function') showToast("ERROR: " + response.reason, 3000);
+    }
+});
 }
 
 [
@@ -5039,6 +5107,66 @@ document.getElementById('fb-monitor-jump').onclick = () => {
 // CHAPTER 10: INITIALIZATION & ONBOARDING
 // =====================================================================
 
+function showLicensePrompt() {
+    if (!isFullscreen) {
+        if (typeof preWizardW !== 'undefined' && preWizardW === 0 && preWizardH === 0) { preWizardW = w; preWizardH = h; }
+        const promptMinW = 900; const promptMinH = 560; 
+        if (w < promptMinW || h < promptMinH) {
+            w = Math.max(w, promptMinW); h = Math.max(h, promptMinH);
+            if(inpW) inpW.value = w; if(inpH) inpH.value = h;
+            window.electronAPI.send('resize-window', { width: w + 120, height: h + 98 });
+            if (typeof updateCanvasSize === 'function') updateCanvasSize(w, h);
+            window.electronAPI.send('center-window');
+        }
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'license-prompt-modal';
+    overlay.className = 'modal show';
+    overlay.style.zIndex = '200005';
+    
+    overlay.innerHTML = `
+        <div class="onboarding-content" style="width: 500px !important; height: 350px !important; padding: 40px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #1e1e1e; border: 1px solid #444; border-radius: 12px; box-shadow: 0 15px 45px rgba(0,0,0,0.8);">
+            <div class="ob-icon pulse" style="font-size: 40px; color: var(--accent); margin-bottom: 15px;"><i class="fa-solid fa-key"></i></div>
+            <h2 style="color: #fff; margin: 0 0 10px 0; font-family: 'Orbitron', sans-serif; font-size: 22px;">Welcome to CapSize</h2>
+            <p style="color: #ccc; margin-bottom: 30px; font-size: 14px; text-align: center;">Do you already have a Pro license key (.mint file)?</p>
+            
+            <div id="lp-step-1" style="display: flex; gap: 15px; width: 100%; justify-content: center;">
+                <button id="lp-btn-no" class="ob-btn-sec" style="flex: 1; padding: 10px; max-width: 180px;">No, Start Core</button>
+                <button id="lp-btn-yes" class="ob-btn-pri" style="flex: 1; padding: 10px; max-width: 180px;">Yes, I have a key</button>
+            </div>
+
+            <div id="lp-step-2" style="display: none; flex-direction: column; align-items: center; width: 100%;">
+                <div style="border: 2px dashed var(--accent); border-radius: 8px; padding: 30px; background: rgba(140,250,150,0.05); width: 100%; text-align: center; margin-bottom: 20px;">
+                    <i class="fa-solid fa-file-import" style="font-size: 30px; color: var(--accent); margin-bottom: 10px;"></i>
+                    <div style="color: #fff; font-weight: bold; font-size: 14px;">Drop your .mint file here</div>
+                </div>
+                <button id="lp-btn-back" class="ob-btn-sec" style="padding: 6px 15px; font-size: 12px;">Back</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    // Click "No" -> Proceeds to Core Wizard
+    document.getElementById('lp-btn-no').onclick = () => {
+        userSettings.hasAskedForLicense = true;
+        if (typeof saveSettings === 'function') saveSettings();
+        overlay.remove();
+        if (typeof initOnboarding === 'function') initOnboarding(); 
+    };
+
+    // Click "Yes" -> Shows drop zone
+    document.getElementById('lp-btn-yes').onclick = () => {
+        document.getElementById('lp-step-1').style.display = 'none';
+        document.getElementById('lp-step-2').style.display = 'flex';
+    };
+
+    document.getElementById('lp-btn-back').onclick = () => {
+        document.getElementById('lp-step-2').style.display = 'none';
+        document.getElementById('lp-step-1').style.display = 'flex';
+    };
+}
+
 function initOnboarding(force = false) {
     let existingEl = document.getElementById('onboarding-modal');
     if(existingEl) existingEl.remove();
@@ -5108,10 +5236,21 @@ function initOnboarding(force = false) {
             if (runWizard) {
                 setTimeout(() => { if (typeof showOnboardingWizard === 'function') showOnboardingWizard(); }, 100);
             } else {
-                if (!isFullscreen && preWizardW > 0 && preWizardH > 0) {
+                // THE FIX: Transition to the app with safe timings
+                if (userSettings.startFullscreen) {
+                    window.electronAPI.send('set-window-opacity', 0);
+                    document.body.classList.add('fullscreen');
+                    window.electronAPI.send('force-maximize');
+                    
+                    // Wait an extra half-second for Windows DWM to clear the screen!
+                    setTimeout(() => { 
+                        enterFullscreenMode(); 
+                    }, 500);
+                } 
+                else if (!isFullscreen && typeof preWizardW !== 'undefined' && preWizardW > 0) {
                     isSuppressingResize = true; w = preWizardW; h = preWizardH;
                     if(inpW) inpW.value = w; if(inpH) inpH.value = h;
-                    window.electronAPI.send('resize-window', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
+                    window.electronAPI.send('resize-window', { width: w + 120, height: h + 98 });
                     window.electronAPI.send('center-window');
                     if (typeof updateCanvasSize === 'function') updateCanvasSize(w, h);
                     setTimeout(() => { if (typeof updateCanvasSize === 'function') updateCanvasSize(w, h); isSuppressingResize = false; preWizardW = 0; preWizardH = 0; }, 100);
@@ -5217,28 +5356,45 @@ function finishOnboarding() {
     const wizDontShowCheck = document.getElementById('wiz-dont-show-check');
     
     userSettings.onboardingComplete = wizDontShowCheck ? wizDontShowCheck.checked : false;
-    saveSettings(); 
+    if (typeof saveSettings === 'function') saveSettings(); 
     
-    if(onboardingWizard) onboardingWizard.classList.remove('show');
-
-    if (!isFullscreen && preWizardW > 0 && preWizardH > 0) {
-        isSuppressingResize = true; 
-        
-        w = preWizardW;
-        h = preWizardH;
-        if(inpW) inpW.value = w;
-        if(inpH) inpH.value = h;
-
-        window.electronAPI.send('resize-window', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
-        window.electronAPI.send('center-window'); 
-        
-        updateCanvasSize(w, h);
+    if(onboardingWizard) {
+        // 1. Fade the wizard out smoothly
+        onboardingWizard.style.transition = 'opacity 0.3s ease';
+        onboardingWizard.style.opacity = '0';
         
         setTimeout(() => {
-            updateCanvasSize(w, h);
-            isSuppressingResize = false;
-            preWizardW = 0; preWizardH = 0;
-        }, 100);
+            // 2. Remove from DOM
+            onboardingWizard.classList.remove('show');
+            onboardingWizard.style.opacity = '1'; // Reset for next time
+
+            // 3. Boot into the app (Fullscreen or Windowed)
+            if (userSettings.startFullscreen) {
+                window.electronAPI.send('set-window-opacity', 0);
+                document.body.classList.add('fullscreen');
+                window.electronAPI.send('force-maximize');
+                
+                // THE FIX: Wait an extra half-second for Windows DWM to clear the screen!
+                setTimeout(() => {
+                    enterFullscreenMode();
+                }, 500); 
+            } 
+            else if (!isFullscreen && typeof preWizardW !== 'undefined' && preWizardW > 0) {
+                isSuppressingResize = true; 
+                w = preWizardW; h = preWizardH;
+                if(inpW) inpW.value = w; if(inpH) inpH.value = h;
+
+                window.electronAPI.send('resize-window', { width: w + 120, height: h + 98 });
+                window.electronAPI.send('center-window'); 
+                
+                if (typeof updateCanvasSize === 'function') updateCanvasSize(w, h);
+                setTimeout(() => {
+                    if (typeof updateCanvasSize === 'function') updateCanvasSize(w, h);
+                    isSuppressingResize = false;
+                    preWizardW = 0; preWizardH = 0;
+                }, 100);
+            }
+        }, 300); // 300ms wait for the fade animation
     }
 }
 
@@ -5297,49 +5453,57 @@ if(wizHotkeyInput) {
 // CHAPTER 11: BOOT SEQUENCE & INJECTIONS
 // =====================================================================
 
-if (userSettings.startFullscreen) {
+// 1. Evaluate the state once
+const needsLicensePrompt = !userSettings.hasAskedForLicense;
+const needsWizard = !userSettings.introComplete || !userSettings.onboardingComplete;
+
+// THE FIX: ONLY capture the screen on boot if NO wizards are going to show!
+if (!needsLicensePrompt && !needsWizard && userSettings.startFullscreen) {
     window.electronAPI.send('set-window-opacity', 0);
     document.body.classList.add('fullscreen');
-
+    window.electronAPI.send('force-maximize');
+    
+    setTimeout(() => {
+        enterFullscreenMode();
+    }, 350); 
 }
 
 setTimeout(() => {
     window.electronAPI.send('renderer-ready-to-show');
-    if (!userSettings.introComplete) {
+    
+    // ROUTE: Prompt -> Core Tour -> Core Wizard -> Done.
+    if (needsLicensePrompt) {
+        showLicensePrompt();
+    } else if (!userSettings.introComplete) {
         initOnboarding(); 
     } else if (!userSettings.onboardingComplete) {
-        saveSettings(); 
+        if (typeof saveSettings === 'function') saveSettings(); 
         if (typeof showOnboardingWizard === 'function') showOnboardingWizard();
     }
-}, 50);
+}, 800); 
 
 setTimeout(() => {
     document.querySelectorAll('.tool-btn').forEach(b => { 
         if(b.dataset.t === tool) b.classList.add('active');
         else if(b.dataset.t) b.classList.remove('active');
     });
-    refreshToolIcons();
-    updateStampBubble();
+    if (typeof refreshToolIcons === 'function') refreshToolIcons();
+    if (typeof updateStampBubble === 'function') updateStampBubble();
 }, 100);
 
-if (!userSettings.startFullscreen) {
-    isSuppressingResize = true;
-    window.electronAPI.send('resize-window', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
+if (!userSettings.startFullscreen && !needsLicensePrompt && !needsWizard) {
+    isSuppressingResize = true; 
+    window.electronAPI.send('resize-window', { width: w + 120, height: h + 98 });
     window.electronAPI.send('center-window');
-    
     setTimeout(() => { 
-        initCanvas(); 
+        if (typeof initCanvas === 'function') initCanvas(); 
         isSuppressingResize = false; 
-        
-        // THE REVEAL: Tell main.js to show the window NOW, after DOM and Canvas are fully built
-        setTimeout(() => {
-            window.electronAPI.send('renderer-ready-to-show');
-        }, 50);
-        
-    }, 100);
-} else {
+    }, 100); 
+}
+
+else {
     setTimeout(() => {
-        window.electronAPI.send('renderer-ready-to-show');
+        window.electronAPI.send('renderer-ready-to-show', false);
     }, 150);
 }
 
@@ -5636,18 +5800,17 @@ window.electronAPI.on('window-shown', (event, dimensions) => {
     // ⭐ THE CRITICAL FIX: Explicitly strip, hide, and break the HTML image element cache
     const backdrop = document.getElementById('backdrop-img');
     if (backdrop) {
-        backdrop.src = "";             // Break the image source link
-        backdrop.style.display = 'none'; // Completely hide it from layout processing
+        backdrop.src = "";             
+        backdrop.style.display = 'none'; 
         backdrop.style.width = '0px';
         backdrop.style.height = '0px';
     }
     
-    // Remove the fullscreen styling flag from the body element container
     document.body.classList.remove('fullscreen');
 
-    // 2. Extract stable default bounding configurations
-    const targetW = (dimensions && dimensions.width) ? dimensions.width : (userSettings.startupW || 840);
-    const targetH = (dimensions && dimensions.height) ? dimensions.height : (userSettings.startupH || 340);
+    // THE FIX: Prioritize lastW/lastH before defaulting to the startup sizes
+    const targetW = (dimensions && dimensions.width) ? dimensions.width : (userSettings.lastW || userSettings.startupW || 840);
+    const targetH = (dimensions && dimensions.height) ? dimensions.height : (userSettings.lastH || userSettings.startupH || 340);
     
     w = targetW;
     h = targetH;
@@ -5679,37 +5842,3 @@ window.electronAPI.on('window-shown', (event, dimensions) => {
     }, 150);
 });
 
-// Handles wake-up via Global Hotkey toggle
-window.electronAPI.on('window-shown', () => {
-    isSuppressingResize = true;
-    
-    const frameEl = document.getElementById('frame');
-
-    if (frameEl) {
-        frameEl.classList.remove('clean-slate', 'immersive-active');
-        frameEl.style.display = 'block';
-        frameEl.style.width = w + 'px';
-        frameEl.style.height = h + 'px';
-        frameEl.style.outline = `2px dashed ${userSettings.accentColor || '#8CFA96'}`;
-    }
-    
-    resetFramePosition();
-    
-    if (inpW) inpW.value = w;
-    if (inpH) inpH.value = h;
-
-    isFullscreen = false;
-    isWGCFrozen = false;
-    
-    updateCanvasSize(w, h, true);
-    
-    window.electronAPI.send('restore-window-size', { width: w + UI_W_OFFSET, height: h + UI_H_OFFSET });
-
-    setTimeout(() => {
-        isSuppressingResize = false;
-        if (typeof renderMain === 'function') renderMain();
-        
-        // REVEAL: The frame is built, it is now safe to show the user
-        window.electronAPI.send('set-window-opacity', 1);
-    }, 150);
-});

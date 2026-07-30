@@ -511,15 +511,16 @@
     "python": "C:\\Users\\mrodr\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe",
     "standalone_static_library": 1,
     "msbuild_path": "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe",
-    "user_agent": "npm/11.12.1 node/v24.11.1 win32 x64 workspaces/false",
+    "user_agent": "npm/11.18.0 node/v24.11.1 win32 x64 workspaces/false",
     "userconfig": "C:\\Users\\mrodr\\.npmrc",
     "prefix": "C:\\Users\\mrodr\\AppData\\Roaming\\npm",
-    "npm_version": "11.12.1",
+    "npm_version": "11.18.0",
     "node_gyp": "C:\\Users\\mrodr\\AppData\\Roaming\\npm\\node_modules\\npm\\node_modules\\node-gyp\\bin\\node-gyp.js",
-    "local_prefix": "C:\\CapSize",
+    "local_prefix": "C:\\Mint Logic\\CapSize App",
     "init_module": "C:\\Users\\mrodr\\.npm-init.js",
     "global_prefix": "C:\\Users\\mrodr\\AppData\\Roaming\\npm",
     "globalconfig": "C:\\Users\\mrodr\\AppData\\Roaming\\npm\\etc\\npmrc",
-    "cache": "C:\\Users\\mrodr\\AppData\\Local\\npm-cache"
+    "cache": "C:\\Users\\mrodr\\AppData\\Local\\npm-cache",
+    "allow_scripts": ""
   }
 }

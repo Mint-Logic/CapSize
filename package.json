@@ -1,7 +1,7 @@
 {
   "name": "capsize",
   "productName": "CapSize",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "A screen capturing and annotating tool",
   "main": "main.js",
   "scripts": {
@@ -15,6 +15,9 @@
   "build": {
     "appId": "com.mintlogic.capsize",
     "productName": "CapSize",
+    "asarUnpack": [
+      "**/*.node"
+    ],
     "directories": {
       "output": "dist/core"
     },
@@ -23,7 +26,8 @@
       "!dist/*",
       "!node_modules/*",
       "!**/*.{ts,tsx}",
-      "!build.js"
+      "!build.js",
+      "build/Release/**/*.node"
     ],
     "fileAssociations": [
   {

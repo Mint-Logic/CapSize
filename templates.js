@@ -955,7 +955,7 @@ input:checked + .slider:before {
         <span class="edition-label" style="position: absolute !important; left: 100% !important; top: 0 !important; margin-left: 4px !important; transform: none !important;">${features.type === 'core' ? 'CORE' : 'PRO'}</span>
     </span>
 </div>
-                            <div class="about-ver">Version 1.0.2</div>
+                            <div class="about-ver">Version 1.1.0</div>
 
                             <div class="guide-btn-group" style="margin: 8px 0; display:flex; flex-direction:column; gap:10px; align-items:center;">
         
@@ -1252,21 +1252,25 @@ input:checked + .slider:before {
                         </div>
                         
                         ${features.type === 'pro' ? `
-                        <div class="setting-group">
-                            <div class="st-title">Background Grid <button class="btn-reset" onclick="resetSection('app-grid')">Reset</button></div>
-                            <div class="setting-row">
-                                <div class="setting-label">Grid Size (px)</div>
-                                <input type="number" data-setting="gridSize" class="st-input" value="${settings.gridSize}">
-                            </div>
-                            <div class="setting-row">
-                                <div class="setting-label">Grid Visibility</div>
-                                <div style="display:flex; align-items:center; gap:5px;">
-                                    <input type="range" data-setting="gridOpacity" min="0.1" max="1" step="0.1" value="${settings.gridOpacity}">
-                                    <span class="slider-val" style="color:var(--accent); font-size:11px; width:30px; text-align:right; font-weight:600;"></span>
-                                </div>
-                            </div>
-                        </div>
-                        ` : ''}
+<div class="setting-group">
+    <div class="st-title">Background Grid <button class="btn-reset" onclick="resetSection('app-grid')">Reset</button></div>
+    <div class="setting-row">
+        <div class="setting-label">Grid Size (px)</div>
+        <input type="number" data-setting="gridSize" class="st-input" value="${settings.gridSize}">
+    </div>
+    <div class="setting-row">
+        <div class="setting-label">Grid Visibility</div>
+        <div style="display:flex; align-items:center; gap:5px;">
+            <input type="range" data-setting="gridOpacity" min="0.1" max="1" step="0.1" value="${settings.gridOpacity}">
+            <span class="slider-val" style="color:var(--accent); font-size:11px; width:30px; text-align:right; font-weight:600;"></span>
+        </div>
+    </div>
+    <div class="setting-row">
+        <div class="setting-label">Export Grid <div class="setting-desc">Include the grid lines in final saved captures</div></div>
+        <label class="toggle"><input type="checkbox" data-setting="exportGrid" ${settings.exportGrid ? 'checked' : ''}><span class="slider"></span></label>
+    </div>
+</div>
+` : ''}
                     </div>
 
                     <div id="tab-out" class="tab-pane">

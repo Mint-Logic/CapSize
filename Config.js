@@ -76,7 +76,10 @@ export const defaultSettings = {
     defaultColor: '#8CFA96',
     customFonts: [], 
     pinnedFonts: [], 
-    hiddenFonts: []  
+    hiddenFonts: [],
+    hasAskedForLicense: false, 
+    introComplete: false,
+    onboardingComplete: false, 
 };
 
 // Load user settings from localStorage, fallback to defaults
@@ -96,7 +99,7 @@ const IS_PRO_BUILD = window.electronAPI.sendSync('get-is-pro-sync');
 
 export const AppFeatures = {
     type: IS_PRO_BUILD ? 'pro' : 'core',
-    appName: IS_PRO_BUILD ? 'CapSize' : 'CapSize Core',
+    appName: IS_PRO_BUILD ? 'CapSize Pro' : 'CapSize Core',
     enableHDDPersistence: IS_PRO_BUILD,
     enableToolbox: IS_PRO_BUILD,      
     enableOCR: IS_PRO_BUILD,
